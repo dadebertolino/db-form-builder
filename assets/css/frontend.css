@@ -1,0 +1,207 @@
+/* DB Form Builder Frontend Styles */
+
+.dbfb-form {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.dbfb-form-group {
+    margin-bottom: 20px;
+}
+
+.dbfb-form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    color: #333;
+}
+
+.dbfb-form-group label .required {
+    color: #d63638;
+    margin-left: 2px;
+}
+
+.dbfb-form-group input[type="text"],
+.dbfb-form-group input[type="email"],
+.dbfb-form-group input[type="tel"],
+.dbfb-form-group input[type="url"],
+.dbfb-form-group input[type="number"],
+.dbfb-form-group input[type="date"],
+.dbfb-form-group textarea,
+.dbfb-form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.dbfb-form-group input:focus,
+.dbfb-form-group textarea:focus,
+.dbfb-form-group select:focus {
+    outline: none;
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+}
+
+.dbfb-form-group textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+/* Checkbox e Radio */
+.dbfb-checkbox-group,
+.dbfb-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dbfb-checkbox-item,
+.dbfb-radio-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dbfb-checkbox-item input,
+.dbfb-radio-item input {
+    width: auto;
+    margin: 0;
+}
+
+.dbfb-checkbox-item label,
+.dbfb-radio-item label {
+    margin: 0;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+/* Submit button */
+.dbfb-submit {
+    padding: 12px 30px;
+    background: #2271b1;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.dbfb-submit:hover {
+    background: #135e96;
+}
+
+.dbfb-submit:disabled {
+    background: #a0a5aa;
+    cursor: not-allowed;
+}
+
+/* Loading state */
+.dbfb-form.loading .dbfb-submit {
+    position: relative;
+    color: transparent;
+}
+
+.dbfb-form.loading .dbfb-submit::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #fff;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: dbfb-spin 0.8s linear infinite;
+}
+
+@keyframes dbfb-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Messages */
+.dbfb-message {
+    padding: 15px 20px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.dbfb-message.success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.dbfb-message.error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+/* Field errors */
+.dbfb-form-group.error input,
+.dbfb-form-group.error textarea,
+.dbfb-form-group.error select {
+    border-color: #d63638;
+}
+
+.dbfb-field-error {
+    color: #d63638;
+    font-size: 13px;
+    margin-top: 5px;
+}
+
+/* Static content */
+.dbfb-divider {
+    margin: 25px 0;
+}
+
+.dbfb-divider hr {
+    border: none;
+    border-top: 1px solid #ddd;
+}
+
+.dbfb-html-content {
+    margin-bottom: 20px;
+    line-height: 1.6;
+}
+
+.dbfb-image-content {
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.dbfb-image-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+
+/* reCAPTCHA notice */
+.dbfb-recaptcha-notice {
+    margin-top: 15px;
+    color: #666;
+    font-size: 12px;
+}
+
+.dbfb-recaptcha-notice a {
+    color: #2271b1;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .dbfb-form {
+        padding: 0 15px;
+    }
+    
+    .dbfb-form-group input,
+    .dbfb-form-group textarea,
+    .dbfb-form-group select {
+        font-size: 16px; /* Previene zoom su iOS */
+    }
+}
