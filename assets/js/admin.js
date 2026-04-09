@@ -199,8 +199,39 @@
                 this.showPreview();
             });
             
-            $('#dbfb-preview-close, #dbfb-preview-modal').on('click', function(e) {
-                if (e.target === this) $('#dbfb-preview-modal').fadeOut(200);
+            $('#dbfb-preview-close').on('click', function() {
+                $('#dbfb-preview-modal').fadeOut(200);
+                setTimeout(function() { $('#dbfb-preview-btn').trigger('focus'); }, 250);
+            });
+            
+            $('#dbfb-preview-modal').on('click', function(e) {
+                if (e.target === this) {
+                    $(this).fadeOut(200);
+                    setTimeout(function() { $('#dbfb-preview-btn').trigger('focus'); }, 250);
+                }
+            });
+            
+            // Escape key closes preview modal
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape' && $('#dbfb-preview-modal').is(':visible')) {
+                    $('#dbfb-preview-modal').fadeOut(200);
+                    setTimeout(function() { $('#dbfb-preview-btn').trigger('focus'); }, 250);
+                }
+            });
+            
+            // Focus trap for preview modal
+            $('#dbfb-preview-modal').on('keydown', function(e) {
+                if (e.key !== 'Tab') return;
+                var $focusable = $(this).find('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])').filter(':visible');
+                var $first = $focusable.first();
+                var $last = $focusable.last();
+                if (e.shiftKey && document.activeElement === $first[0]) {
+                    e.preventDefault();
+                    $last.trigger('focus');
+                } else if (!e.shiftKey && document.activeElement === $last[0]) {
+                    e.preventDefault();
+                    $first.trigger('focus');
+                }
             });
         },
         
@@ -267,6 +298,7 @@
             
             $('#dbfb-preview-content').html(html);
             $('#dbfb-preview-modal').fadeIn(200);
+            setTimeout(function() { $('#dbfb-preview-close').trigger('focus'); }, 250);
         },
         
         addField: function(type) {

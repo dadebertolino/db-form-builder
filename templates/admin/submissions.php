@@ -110,12 +110,12 @@
     <?php endif; ?>
 </div>
 
-<!-- Modale dettaglio risposta -->
-<div id="dbfb-submission-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100000;">
+<!-- Modale dettaglio risposta (WCAG 2.1 AA: dialog pattern) -->
+<div id="dbfb-submission-modal" role="dialog" aria-modal="true" aria-labelledby="dbfb-modal-title" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100000;">
     <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; border-radius:8px; padding:25px; max-width:600px; width:90%; max-height:80vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
             <h3 style="margin:0;" id="dbfb-modal-title"><?php _e('Dettaglio Risposta', 'db-form-builder'); ?></h3>
-            <button type="button" id="dbfb-modal-close" style="background:none; border:none; font-size:24px; cursor:pointer; color:#666;">&times;</button>
+            <button type="button" id="dbfb-modal-close" aria-label="<?php _e('Chiudi', 'db-form-builder'); ?>" style="background:none; border:none; font-size:24px; cursor:pointer; color:#666; min-width:44px; min-height:44px;">&times;</button>
         </div>
         <div id="dbfb-modal-content"></div>
     </div>
@@ -139,9 +139,12 @@ jQuery(document).ready(function($) {
         }
     }
     
-    // Modale dettaglio
+    // Modale dettaglio (WCAG: focus trap, Escape, restore focus)
+    var $lastFocused = null;
+    
     $(document).on('click', '.dbfb-view-submission', function(e) {
         e.preventDefault();
+        $lastFocused = $(this);
         var $link = $(this);
         var fields = JSON.parse($link.attr('data-fields'));
         var labels = JSON.parse($link.attr('data-labels'));
@@ -160,10 +163,46 @@ jQuery(document).ready(function($) {
         $('#dbfb-modal-title').text('<?php _e('Risposta', 'db-form-builder'); ?> #' + $link.data('id'));
         $('#dbfb-modal-content').html(html);
         $('#dbfb-submission-modal').fadeIn(200);
+        
+        // Focus the close button (WCAG 2.4.3)
+        setTimeout(function() { $('#dbfb-modal-close').trigger('focus'); }, 250);
     });
     
-    $('#dbfb-modal-close, #dbfb-submission-modal').on('click', function(e) {
-        if (e.target === this) $('#dbfb-submission-modal').fadeOut(200);
+    function closeModal() {
+        $('#dbfb-submission-modal').fadeOut(200);
+        // Restore focus to trigger element (WCAG 2.4.3)
+        if ($lastFocused && $lastFocused.length) {
+            setTimeout(function() { $lastFocused.trigger('focus'); }, 250);
+        }
+    }
+    
+    $('#dbfb-modal-close').on('click', closeModal);
+    
+    $('#dbfb-submission-modal').on('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+    
+    // Escape key closes modal (WCAG 2.1.1)
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape' && $('#dbfb-submission-modal').is(':visible')) {
+            closeModal();
+        }
+    });
+    
+    // Focus trap inside modal (WCAG 2.4.3)
+    $('#dbfb-submission-modal').on('keydown', function(e) {
+        if (e.key !== 'Tab') return;
+        var $focusable = $(this).find('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])').filter(':visible');
+        var $first = $focusable.first();
+        var $last = $focusable.last();
+        
+        if (e.shiftKey && document.activeElement === $first[0]) {
+            e.preventDefault();
+            $last.trigger('focus');
+        } else if (!e.shiftKey && document.activeElement === $last[0]) {
+            e.preventDefault();
+            $first.trigger('focus');
+        }
     });
 });
 </script>

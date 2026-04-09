@@ -5,11 +5,20 @@ $enable_captcha = !empty($form_settings['enable_captcha']) && !empty($global_set
 $recaptcha_version = $global_settings['recaptcha_version'] ?? 'v2';
 $enable_honeypot = !empty($form_settings['enable_honeypot']);
 $enable_gdpr = !empty($form_settings['enable_gdpr']);
+$form_title = get_the_title($form_id);
 ?>
 
-<form class="dbfb-form" data-form-id="<?php echo esc_attr($form_id); ?>" <?php if ($enable_captcha && $recaptcha_version === 'v3'): ?>data-recaptcha-v3="1"<?php endif; ?>>
+<form class="dbfb-form" 
+      data-form-id="<?php echo esc_attr($form_id); ?>" 
+      <?php if ($enable_captcha && $recaptcha_version === 'v3'): ?>data-recaptcha-v3="1"<?php endif; ?>
+      role="form"
+      aria-label="<?php echo esc_attr($form_title); ?>"
+      novalidate>
     
-    <?php // Honeypot: campo invisibile che solo i bot compilano ?>
+    <?php // Live region per messaggi - screen reader annuncerà i cambiamenti ?>
+    <div class="dbfb-messages-region" aria-live="assertive" aria-atomic="true" role="status"></div>
+    
+    <?php // Honeypot ?>
     <?php if ($enable_honeypot): ?>
     <div style="position:absolute;left:-9999px;top:-9999px;opacity:0;height:0;width:0;overflow:hidden;" aria-hidden="true" tabindex="-1">
         <label for="dbfb_website_url_<?php echo $form_id; ?>">Website</label>
@@ -18,11 +27,14 @@ $enable_gdpr = !empty($form_settings['enable_gdpr']);
     <input type="hidden" name="dbfb_timestamp" value="<?php echo time(); ?>">
     <?php endif; ?>
     
-    <?php foreach ($form_fields as $field): ?>
+    <?php foreach ($form_fields as $field): 
+        $field_id = 'dbfb-' . esc_attr($field['id']);
+        $error_id = $field_id . '-error';
+        $is_required = !empty($field['required']);
+    ?>
         <?php 
-        // Campi contenuto statico (non input)
         if ($field['type'] === 'divider'): ?>
-            <div class="dbfb-divider">
+            <div class="dbfb-divider" role="separator" aria-hidden="true">
                 <hr>
             </div>
         <?php elseif ($field['type'] === 'html'): ?>
@@ -33,87 +45,117 @@ $enable_gdpr = !empty($form_settings['enable_gdpr']);
             <div class="dbfb-image-content">
                 <?php if (!empty($field['image_url'])): ?>
                     <img src="<?php echo esc_url($field['image_url']); ?>" 
-                         alt="<?php echo esc_attr($field['image_alt'] ?? ''); ?>">
+                         alt="<?php echo esc_attr($field['image_alt'] ?? ''); ?>"
+                         <?php if (empty($field['image_alt'])): ?>role="presentation"<?php endif; ?>>
                 <?php endif; ?>
             </div>
         <?php else: ?>
-        <!-- Campi input -->
-        <div class="dbfb-form-group">
-            <label for="dbfb-<?php echo esc_attr($field['id']); ?>">
-                <?php echo esc_html($field['label']); ?>
-                <?php if (!empty($field['required'])): ?>
-                    <span class="required">*</span>
-                <?php endif; ?>
-            </label>
+        
+        <div class="dbfb-form-group" data-field-id="<?php echo esc_attr($field['id']); ?>">
             
-            <?php switch ($field['type']):
-                case 'text':
-                case 'email':
-                case 'tel':
-                case 'number':
-                case 'url':
-                case 'date': ?>
-                    <input type="<?php echo esc_attr($field['type']); ?>" 
-                           id="dbfb-<?php echo esc_attr($field['id']); ?>"
-                           name="<?php echo esc_attr($field['id']); ?>"
-                           placeholder="<?php echo esc_attr($field['placeholder'] ?? ''); ?>"
-                           <?php echo !empty($field['required']) ? 'required' : ''; ?>>
-                    <?php break;
-                
-                case 'textarea': ?>
-                    <textarea id="dbfb-<?php echo esc_attr($field['id']); ?>"
-                              name="<?php echo esc_attr($field['id']); ?>"
-                              placeholder="<?php echo esc_attr($field['placeholder'] ?? ''); ?>"
-                              <?php echo !empty($field['required']) ? 'required' : ''; ?>></textarea>
-                    <?php break;
-                
-                case 'select': ?>
-                    <select id="dbfb-<?php echo esc_attr($field['id']); ?>"
-                            name="<?php echo esc_attr($field['id']); ?>"
-                            <?php echo !empty($field['required']) ? 'required' : ''; ?>>
-                        <option value=""><?php _e('Seleziona...', 'db-form-builder'); ?></option>
-                        <?php foreach ($field['options'] as $option): ?>
-                            <option value="<?php echo esc_attr($option); ?>">
-                                <?php echo esc_html($option); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <?php break;
-                
-                case 'checkbox': ?>
-                    <div class="dbfb-checkbox-group">
+            <?php if (in_array($field['type'], ['checkbox', 'radio'])): ?>
+                <?php // WCAG 1.3.1 + 4.1.2: fieldset/legend per gruppi ?>
+                <fieldset>
+                    <legend>
+                        <?php echo esc_html($field['label']); ?>
+                        <?php if ($is_required): ?>
+                            <span class="required" aria-hidden="true">*</span>
+                            <span class="screen-reader-text"><?php _e('(obbligatorio)', 'db-form-builder'); ?></span>
+                        <?php endif; ?>
+                    </legend>
+                    
+                    <?php if ($field['type'] === 'checkbox'): ?>
+                    <div class="dbfb-checkbox-group" role="group">
                         <?php foreach ($field['options'] as $i => $option): ?>
                             <div class="dbfb-checkbox-item">
                                 <input type="checkbox" 
-                                       id="dbfb-<?php echo esc_attr($field['id']); ?>-<?php echo $i; ?>"
+                                       id="<?php echo $field_id; ?>-<?php echo $i; ?>"
                                        name="<?php echo esc_attr($field['id']); ?>"
-                                       value="<?php echo esc_attr($option); ?>">
-                                <label for="dbfb-<?php echo esc_attr($field['id']); ?>-<?php echo $i; ?>">
+                                       value="<?php echo esc_attr($option); ?>"
+                                       aria-describedby="<?php echo $error_id; ?>">
+                                <label for="<?php echo $field_id; ?>-<?php echo $i; ?>">
                                     <?php echo esc_html($option); ?>
                                 </label>
                             </div>
                         <?php endforeach; ?>
                     </div>
-                    <?php break;
-                
-                case 'radio': ?>
-                    <div class="dbfb-radio-group">
+                    <?php else: ?>
+                    <div class="dbfb-radio-group" role="radiogroup">
                         <?php foreach ($field['options'] as $i => $option): ?>
                             <div class="dbfb-radio-item">
                                 <input type="radio" 
-                                       id="dbfb-<?php echo esc_attr($field['id']); ?>-<?php echo $i; ?>"
+                                       id="<?php echo $field_id; ?>-<?php echo $i; ?>"
                                        name="<?php echo esc_attr($field['id']); ?>"
                                        value="<?php echo esc_attr($option); ?>"
-                                       <?php echo !empty($field['required']) ? 'required' : ''; ?>>
-                                <label for="dbfb-<?php echo esc_attr($field['id']); ?>-<?php echo $i; ?>">
+                                       <?php echo $is_required ? 'required aria-required="true"' : ''; ?>
+                                       aria-describedby="<?php echo $error_id; ?>">
+                                <label for="<?php echo $field_id; ?>-<?php echo $i; ?>">
                                     <?php echo esc_html($option); ?>
                                 </label>
                             </div>
                         <?php endforeach; ?>
                     </div>
-                    <?php break;
+                    <?php endif; ?>
+                    
+                    <div id="<?php echo $error_id; ?>" class="dbfb-field-error" role="alert" aria-live="polite"></div>
+                </fieldset>
+            
+            <?php else: ?>
+                <label for="<?php echo $field_id; ?>">
+                    <?php echo esc_html($field['label']); ?>
+                    <?php if ($is_required): ?>
+                        <span class="required" aria-hidden="true">*</span>
+                        <span class="screen-reader-text"><?php _e('(obbligatorio)', 'db-form-builder'); ?></span>
+                    <?php endif; ?>
+                </label>
                 
-            endswitch; ?>
+                <?php switch ($field['type']):
+                    case 'text':
+                    case 'email':
+                    case 'tel':
+                    case 'number':
+                    case 'url':
+                    case 'date': ?>
+                        <input type="<?php echo esc_attr($field['type']); ?>" 
+                               id="<?php echo $field_id; ?>"
+                               name="<?php echo esc_attr($field['id']); ?>"
+                               placeholder="<?php echo esc_attr($field['placeholder'] ?? ''); ?>"
+                               <?php echo $is_required ? 'required aria-required="true"' : ''; ?>
+                               aria-invalid="false"
+                               aria-describedby="<?php echo $error_id; ?>"
+                               <?php if ($field['type'] === 'email'): ?>autocomplete="email"<?php endif; ?>
+                               <?php if ($field['type'] === 'tel'): ?>autocomplete="tel"<?php endif; ?>
+                               <?php if ($field['type'] === 'url'): ?>autocomplete="url"<?php endif; ?>>
+                        <?php break;
+                    
+                    case 'textarea': ?>
+                        <textarea id="<?php echo $field_id; ?>"
+                                  name="<?php echo esc_attr($field['id']); ?>"
+                                  placeholder="<?php echo esc_attr($field['placeholder'] ?? ''); ?>"
+                                  <?php echo $is_required ? 'required aria-required="true"' : ''; ?>
+                                  aria-invalid="false"
+                                  aria-describedby="<?php echo $error_id; ?>"></textarea>
+                        <?php break;
+                    
+                    case 'select': ?>
+                        <select id="<?php echo $field_id; ?>"
+                                name="<?php echo esc_attr($field['id']); ?>"
+                                <?php echo $is_required ? 'required aria-required="true"' : ''; ?>
+                                aria-invalid="false"
+                                aria-describedby="<?php echo $error_id; ?>">
+                            <option value=""><?php _e('Seleziona...', 'db-form-builder'); ?></option>
+                            <?php foreach ($field['options'] as $option): ?>
+                                <option value="<?php echo esc_attr($option); ?>">
+                                    <?php echo esc_html($option); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php break;
+                    
+                endswitch; ?>
+                
+                <div id="<?php echo $error_id; ?>" class="dbfb-field-error" role="alert" aria-live="polite"></div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
     <?php endforeach; ?>
@@ -124,28 +166,40 @@ $enable_gdpr = !empty($form_settings['enable_gdpr']);
     </div>
     <?php endif; ?>
     
-    <?php // GDPR Checkbox ?>
     <?php if ($enable_gdpr): ?>
     <div class="dbfb-form-group dbfb-gdpr-group">
         <div class="dbfb-checkbox-item">
-            <input type="checkbox" id="dbfb-gdpr-<?php echo $form_id; ?>" name="dbfb_gdpr_consent" value="1" required>
+            <input type="checkbox" 
+                   id="dbfb-gdpr-<?php echo $form_id; ?>" 
+                   name="dbfb_gdpr_consent" 
+                   value="1" 
+                   required 
+                   aria-required="true"
+                   aria-invalid="false"
+                   aria-describedby="dbfb-gdpr-error-<?php echo $form_id; ?>">
             <label for="dbfb-gdpr-<?php echo $form_id; ?>">
                 <?php 
                 $gdpr_text = $form_settings['gdpr_text'] ?? __('Acconsento al trattamento dei dati personali', 'db-form-builder');
                 $gdpr_link = $form_settings['gdpr_link'] ?? '';
                 echo esc_html($gdpr_text);
                 if ($gdpr_link): ?>
-                    <a href="<?php echo esc_url($gdpr_link); ?>" target="_blank" rel="noopener"><?php _e('Leggi la Privacy Policy', 'db-form-builder'); ?></a>
+                    <a href="<?php echo esc_url($gdpr_link); ?>" target="_blank" rel="noopener">
+                        <?php _e('Leggi la Privacy Policy', 'db-form-builder'); ?>
+                        <span class="screen-reader-text"><?php _e('(si apre in una nuova finestra)', 'db-form-builder'); ?></span>
+                    </a>
                 <?php endif; ?>
-                <span class="required">*</span>
+                <span class="required" aria-hidden="true">*</span>
+                <span class="screen-reader-text"><?php _e('(obbligatorio)', 'db-form-builder'); ?></span>
             </label>
         </div>
+        <div id="dbfb-gdpr-error-<?php echo $form_id; ?>" class="dbfb-field-error" role="alert" aria-live="polite"></div>
     </div>
     <?php endif; ?>
     
     <div class="dbfb-form-group">
-        <button type="submit" class="dbfb-submit">
-            <?php echo esc_html($form_settings['submit_text'] ?? __('Invia', 'db-form-builder')); ?>
+        <button type="submit" class="dbfb-submit" aria-live="polite">
+            <span class="dbfb-submit-text"><?php echo esc_html($form_settings['submit_text'] ?? __('Invia', 'db-form-builder')); ?></span>
+            <span class="dbfb-submit-loading" aria-hidden="true"><?php _e('Invio in corso...', 'db-form-builder'); ?></span>
         </button>
     </div>
     
@@ -153,9 +207,13 @@ $enable_gdpr = !empty($form_settings['enable_gdpr']);
     <div class="dbfb-recaptcha-notice">
         <small>
             <?php _e('Questo sito è protetto da reCAPTCHA e si applicano la', 'db-form-builder'); ?>
-            <a href="https://policies.google.com/privacy" target="_blank"><?php _e('Privacy Policy', 'db-form-builder'); ?></a>
+            <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">
+                <?php _e('Privacy Policy', 'db-form-builder'); ?><span class="screen-reader-text"> <?php _e('(si apre in una nuova finestra)', 'db-form-builder'); ?></span>
+            </a>
             <?php _e('e i', 'db-form-builder'); ?>
-            <a href="https://policies.google.com/terms" target="_blank"><?php _e('Termini di Servizio', 'db-form-builder'); ?></a>
+            <a href="https://policies.google.com/terms" target="_blank" rel="noopener">
+                <?php _e('Termini di Servizio', 'db-form-builder'); ?><span class="screen-reader-text"> <?php _e('(si apre in una nuova finestra)', 'db-form-builder'); ?></span>
+            </a>
             <?php _e('di Google.', 'db-form-builder'); ?>
         </small>
     </div>

@@ -27,6 +27,7 @@ Plugin WordPress per la creazione di form con drag & drop.
 - **Shortcode** - Inserisci i form ovunque con `[dbfb_form id="X"]`
 - **Blocco Gutenberg** - Inserisci i form dall'editor blocchi
 - **Widget classico** - Per sidebar e footer
+- **Accessibilità WCAG 2.1 AA** - Form completamente accessibili: ARIA, focus management, contrasto colori, reduced motion, high contrast mode
 
 ## Installazione
 
@@ -90,6 +91,25 @@ Dalla pagina risposte, clicca "Esporta CSV"
 
 ## Changelog
 
+### 2.1.0
+- Aggiunto: Conformità WCAG 2.1 AA completa
+- Aggiunto: `aria-required`, `aria-invalid`, `aria-describedby` su tutti i campi
+- Aggiunto: `fieldset`/`legend` per gruppi checkbox e radio
+- Aggiunto: `role="alert"` e `aria-live` per messaggi di stato (screen reader)
+- Aggiunto: Focus management — focus su errore/messaggio dopo invio, restore focus dopo chiusura modale
+- Aggiunto: Focus trap e chiusura con Escape su tutte le modali (dialog pattern ARIA)
+- Aggiunto: `focus-visible` con outline ad alto contrasto (3px #0056b3)
+- Aggiunto: Touch target minimo 44×44px su pulsanti, checkbox, radio
+- Aggiunto: `prefers-reduced-motion` — animazioni disabilitate
+- Aggiunto: `forced-colors` — supporto Windows High Contrast Mode
+- Aggiunto: `screen-reader-text` per "(obbligatorio)" e "(si apre in una nuova finestra)"
+- Aggiunto: `autocomplete` su campi email, telefono, URL
+- Aggiunto: `novalidate` sul form (validazione gestita via JS per messaggi accessibili)
+- Aggiunto: `aria-busy` sul pulsante durante il caricamento
+- Migliorato: Contrast ratio ≥ 4.5:1 su tutti i testi e bordi input
+- Migliorato: Link distinguibili non solo per colore (underline)
+- Migliorato: Pulizia errore inline in tempo reale al cambio valore campo
+
 ### 2.0.0
 - Aggiunto: Duplicazione form
 - Aggiunto: Anteprima form nel builder
@@ -115,6 +135,22 @@ Dalla pagina risposte, clicca "Esporta CSV"
 
 ### 1.0.0
 - Release iniziale
+
+## Accessibilità (WCAG 2.1 AA)
+
+Il plugin è conforme alle linee guida WCAG 2.1 livello AA. I form generati includono:
+
+- Struttura semantica corretta (`fieldset`/`legend` per gruppi, `label` associati)
+- Attributi ARIA completi (`aria-required`, `aria-invalid`, `aria-describedby`, `aria-live`)
+- Focus management: focus automatico su messaggi di errore/successo, restore focus dopo chiusura modali
+- Focus trap nelle modali con chiusura via tasto Escape
+- Indicatore di focus ad alto contrasto visibile da tastiera (`focus-visible`)
+- Contrast ratio ≥ 4.5:1 su tutti i testi, bordi e componenti UI
+- Touch target minimo 44×44px
+- Supporto `prefers-reduced-motion` (animazioni disabilitate)
+- Supporto Windows High Contrast Mode (`forced-colors`)
+- Testi nascosti per screen reader: "(obbligatorio)", "(si apre in una nuova finestra)"
+- Validazione inline in tempo reale con pulizia errori
 
 ## Requisiti
 

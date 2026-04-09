@@ -1,8 +1,37 @@
-/* DB Form Builder Frontend Styles */
+/* DB Form Builder Frontend Styles — WCAG 2.1 AA */
+
+/* Screen reader only text (WCAG 1.3.1) */
+.screen-reader-text {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
 
 .dbfb-form {
     max-width: 600px;
     margin: 0 auto;
+}
+
+/* Fieldset reset for checkbox/radio groups */
+.dbfb-form fieldset {
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+.dbfb-form fieldset legend {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    color: #1a1a1a; /* contrast ratio 16:1 on white */
+    padding: 0;
+    font-size: inherit;
 }
 
 .dbfb-form-group {
@@ -13,11 +42,11 @@
     display: block;
     margin-bottom: 6px;
     font-weight: 500;
-    color: #333;
+    color: #1a1a1a; /* WCAG 1.4.3: contrast ratio 16:1 */
 }
 
 .dbfb-form-group label .required {
-    color: #d63638;
+    color: #b32d2e; /* contrast ratio 5.6:1 on white - WCAG AA compliant */
     margin-left: 2px;
 }
 
@@ -31,15 +60,38 @@
 .dbfb-form-group select {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid #ddd;
+    border: 1px solid #767676; /* WCAG 1.4.11: 4.5:1 contrast ratio for UI components */
     border-radius: 4px;
     font-size: 16px;
+    color: #1a1a1a;
+    background: #fff;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+/* Focus visible (WCAG 2.4.7) - high contrast focus indicator */
+.dbfb-form-group input:focus-visible,
+.dbfb-form-group textarea:focus-visible,
+.dbfb-form-group select:focus-visible {
+    outline: 3px solid #0056b3;
+    outline-offset: 1px;
+    border-color: #0056b3;
+    box-shadow: none;
+}
+
+/* Fallback for browsers without focus-visible */
 .dbfb-form-group input:focus,
 .dbfb-form-group textarea:focus,
 .dbfb-form-group select:focus {
+    outline: 3px solid #0056b3;
+    outline-offset: 1px;
+    border-color: #0056b3;
+    box-shadow: none;
+}
+
+/* Only remove outline for mouse users when focus-visible is supported */
+.dbfb-form-group input:focus:not(:focus-visible),
+.dbfb-form-group textarea:focus:not(:focus-visible),
+.dbfb-form-group select:focus:not(:focus-visible) {
     outline: none;
     border-color: #2271b1;
     box-shadow: 0 0 0 1px #2271b1;
@@ -50,6 +102,14 @@
     resize: vertical;
 }
 
+/* Placeholder contrast (WCAG 1.4.3: not required, but best practice) */
+.dbfb-form-group input::placeholder,
+.dbfb-form-group textarea::placeholder {
+    color: #5a5a5a; /* 7:1 contrast ratio */
+    opacity: 1;
+}
+
+/* Checkbox e Radio */
 .dbfb-checkbox-group,
 .dbfb-radio-group {
     display: flex;
@@ -62,12 +122,22 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    min-height: 44px; /* WCAG 2.5.5: touch target size */
 }
 
 .dbfb-checkbox-item input,
 .dbfb-radio-item input {
-    width: auto;
+    width: 20px;
+    height: 20px;
     margin: 0;
+    flex-shrink: 0;
+}
+
+/* Focus for checkboxes/radios */
+.dbfb-checkbox-item input:focus-visible,
+.dbfb-radio-item input:focus-visible {
+    outline: 3px solid #0056b3;
+    outline-offset: 2px;
 }
 
 .dbfb-checkbox-item label,
@@ -75,11 +145,14 @@
     margin: 0;
     font-weight: normal;
     cursor: pointer;
+    color: #1a1a1a;
 }
 
+/* Submit button — WCAG 2.5.5: min 44x44 touch target */
 .dbfb-submit {
     padding: 12px 30px;
-    background: #2271b1;
+    min-height: 44px;
+    background: #0056b3; /* contrast ratio 8.6:1 with white text */
     color: #fff;
     border: none;
     border-radius: 4px;
@@ -87,30 +160,50 @@
     font-weight: 500;
     cursor: pointer;
     transition: background 0.2s;
+    position: relative;
 }
 
 .dbfb-submit:hover {
-    background: #135e96;
+    background: #003d80;
+}
+
+.dbfb-submit:focus-visible {
+    outline: 3px solid #0056b3;
+    outline-offset: 3px;
 }
 
 .dbfb-submit:disabled {
-    background: #a0a5aa;
+    background: #5a5a5a;
     cursor: not-allowed;
+    opacity: 0.7;
 }
 
-.dbfb-form.loading .dbfb-submit {
-    position: relative;
-    color: transparent;
+/* Loading state */
+.dbfb-submit-loading {
+    display: none;
+}
+
+.dbfb-form.loading .dbfb-submit-text {
+    visibility: hidden;
+}
+
+.dbfb-form.loading .dbfb-submit-loading {
+    display: inline;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    visibility: visible;
 }
 
 .dbfb-form.loading .dbfb-submit::after {
     content: '';
     position: absolute;
     top: 50%;
-    left: 50%;
-    width: 20px;
-    height: 20px;
-    margin: -10px 0 0 -10px;
+    right: 15px;
+    width: 18px;
+    height: 18px;
+    margin-top: -9px;
     border: 2px solid #fff;
     border-top-color: transparent;
     border-radius: 50%;
@@ -121,48 +214,84 @@
     to { transform: rotate(360deg); }
 }
 
+/* Reduced motion (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+    .dbfb-form.loading .dbfb-submit::after {
+        animation: none;
+        border-top-color: rgba(255,255,255,0.4);
+    }
+    
+    .dbfb-form-group input,
+    .dbfb-form-group textarea,
+    .dbfb-form-group select,
+    .dbfb-submit {
+        transition: none;
+    }
+}
+
+/* Messages (WCAG 4.1.3: status messages) */
 .dbfb-message {
     padding: 15px 20px;
     border-radius: 4px;
     margin-bottom: 20px;
+    font-weight: 500;
+}
+
+.dbfb-message:focus {
+    outline: 3px solid #0056b3;
+    outline-offset: 2px;
 }
 
 .dbfb-message.success {
     background: #d4edda;
-    border: 1px solid #c3e6cb;
-    color: #155724;
+    border: 2px solid #28a745;
+    color: #0f5132; /* contrast ratio 8.7:1 */
 }
 
 .dbfb-message.error {
     background: #f8d7da;
-    border: 1px solid #f5c6cb;
-    color: #721c24;
+    border: 2px solid #dc3545;
+    color: #842029; /* contrast ratio 7:1 */
 }
 
+/* Field errors (WCAG 3.3.1: error identification) */
 .dbfb-form-group.error input,
 .dbfb-form-group.error textarea,
 .dbfb-form-group.error select {
-    border-color: #d63638;
+    border-color: #b32d2e;
+    border-width: 2px;
+}
+
+.dbfb-form-group.error fieldset {
+    border-left: 3px solid #b32d2e;
+    padding-left: 10px;
 }
 
 .dbfb-field-error {
-    color: #d63638;
-    font-size: 13px;
+    color: #b32d2e; /* contrast ratio 5.6:1 */
+    font-size: 14px;
     margin-top: 5px;
+    min-height: 0;
 }
 
+.dbfb-field-error:empty {
+    display: none;
+}
+
+/* Static content */
 .dbfb-divider {
     margin: 25px 0;
 }
 
 .dbfb-divider hr {
     border: none;
-    border-top: 1px solid #ddd;
+    border-top: 1px solid #767676;
 }
 
 .dbfb-html-content {
     margin-bottom: 20px;
     line-height: 1.6;
+    color: #1a1a1a;
 }
 
 .dbfb-image-content {
@@ -176,29 +305,38 @@
     border-radius: 4px;
 }
 
+/* reCAPTCHA notice */
 .dbfb-recaptcha-notice {
     margin-top: 15px;
-    color: #666;
-    font-size: 12px;
+    color: #5a5a5a; /* 7:1 contrast ratio */
+    font-size: 13px;
 }
 
 .dbfb-recaptcha-notice a {
-    color: #2271b1;
+    color: #0056b3;
+    text-decoration: underline; /* WCAG 1.4.1: link distinguishable not only by color */
+}
+
+.dbfb-recaptcha-notice a:hover,
+.dbfb-recaptcha-notice a:focus {
+    color: #003d80;
 }
 
 /* GDPR checkbox */
 .dbfb-gdpr-group {
     padding: 12px 15px;
     background: #f9f9f9;
-    border: 1px solid #eee;
+    border: 1px solid #767676;
     border-radius: 4px;
 }
 
 .dbfb-gdpr-group a {
-    color: #2271b1;
+    color: #0056b3;
     margin-left: 5px;
+    text-decoration: underline;
 }
 
+/* Responsive */
 @media (max-width: 600px) {
     .dbfb-form {
         padding: 0 15px;
@@ -207,6 +345,24 @@
     .dbfb-form-group input,
     .dbfb-form-group textarea,
     .dbfb-form-group select {
-        font-size: 16px;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+}
+
+/* High contrast mode support */
+@media (forced-colors: active) {
+    .dbfb-submit {
+        border: 2px solid ButtonText;
+    }
+    
+    .dbfb-form-group.error input,
+    .dbfb-form-group.error textarea,
+    .dbfb-form-group.error select {
+        border-color: Mark;
+    }
+    
+    .dbfb-message.success,
+    .dbfb-message.error {
+        border: 2px solid CanvasText;
     }
 }

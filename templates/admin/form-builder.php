@@ -321,17 +321,17 @@
 
 <!-- Modale Anteprima -->
 <?php if ($form_id): ?>
-<div id="dbfb-preview-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:100000;">
+<div id="dbfb-preview-modal" role="dialog" aria-modal="true" aria-labelledby="dbfb-preview-title" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:100000;">
     <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; border-radius:8px; padding:30px; max-width:700px; width:90%; max-height:85vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:10px;">
-            <h3 style="margin:0;">
+            <h3 style="margin:0;" id="dbfb-preview-title">
                 <span class="dashicons dashicons-visibility" style="margin-right:5px;"></span>
                 <?php _e('Anteprima Form', 'db-form-builder'); ?>
             </h3>
-            <button type="button" id="dbfb-preview-close" style="background:none; border:none; font-size:24px; cursor:pointer; color:#666;">&times;</button>
+            <button type="button" id="dbfb-preview-close" aria-label="<?php _e('Chiudi anteprima', 'db-form-builder'); ?>" style="background:none; border:none; font-size:24px; cursor:pointer; color:#666; min-width:44px; min-height:44px;">&times;</button>
         </div>
         <div id="dbfb-preview-content" style="border:1px solid #eee; border-radius:4px; padding:20px;"></div>
-        <p style="margin:15px 0 0; color:#999; font-size:12px; text-align:center;">
+        <p style="margin:15px 0 0; color:#5a5a5a; font-size:12px; text-align:center;">
             <?php _e('Questa è un\'anteprima. Il form non è funzionante in questa modalità.', 'db-form-builder'); ?>
         </p>
     </div>
