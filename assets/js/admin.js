@@ -26,7 +26,6 @@
         },
         
         initSortable: function() {
-            // Sidebar - campo clonabile
             if (document.getElementById('dbfb-field-types')) {
                 new Sortable(document.getElementById('dbfb-field-types'), {
                     group: {
@@ -39,7 +38,6 @@
                 });
             }
             
-            // Canvas - riceve e ordina campi
             if (document.getElementById('dbfb-fields-container')) {
                 new Sortable(document.getElementById('dbfb-fields-container'), {
                     group: 'fields',
@@ -109,7 +107,7 @@
             
             // Copia shortcode
             $(document).on('click', '.dbfb-shortcode', function() {
-                const text = $(this).text();
+                const text = $(this).text().trim();
                 navigator.clipboard.writeText(text).then(() => {
                     const original = $(this).text();
                     $(this).text('Copiato!');
@@ -173,7 +171,6 @@
                     const attachment = frame.state().get('selection').first().toJSON();
                     $input.val(attachment.url).trigger('change');
                     
-                    // Aggiorna preview
                     let $preview = $item.find('.dbfb-image-preview');
                     if (!$preview.length) {
                         $preview = $('<div class="dbfb-image-preview"></div>');
@@ -186,6 +183,90 @@
                 
                 frame.open();
             });
+            
+            // Toggle GDPR options
+            $('#dbfb-enable-gdpr').on('change', function() {
+                $('#dbfb-gdpr-options').toggle(this.checked);
+            });
+            
+            // Toggle Rate Limit options
+            $('#dbfb-rate-limit-enabled').on('change', function() {
+                $('#dbfb-rate-limit-options').toggle(this.checked);
+            });
+            
+            // Anteprima
+            $('#dbfb-preview-btn').on('click', () => {
+                this.showPreview();
+            });
+            
+            $('#dbfb-preview-close, #dbfb-preview-modal').on('click', function(e) {
+                if (e.target === this) $('#dbfb-preview-modal').fadeOut(200);
+            });
+        },
+        
+        showPreview: function() {
+            let html = '';
+            
+            this.fields.forEach(field => {
+                if (field.type === 'divider') {
+                    html += '<div style="margin:20px 0;"><hr></div>';
+                    return;
+                }
+                if (field.type === 'html') {
+                    html += '<div style="margin-bottom:15px; line-height:1.6;">' + (field.content || '') + '</div>';
+                    return;
+                }
+                if (field.type === 'image') {
+                    if (field.image_url) {
+                        html += '<div style="margin-bottom:15px; text-align:center;"><img src="' + this.escapeHtml(field.image_url) + '" alt="' + this.escapeHtml(field.image_alt || '') + '" style="max-width:100%; border-radius:4px;"></div>';
+                    }
+                    return;
+                }
+                
+                const req = field.required ? ' <span style="color:#d63638;">*</span>' : '';
+                html += '<div style="margin-bottom:18px;">';
+                html += '<label style="display:block; margin-bottom:6px; font-weight:500;">' + this.escapeHtml(field.label) + req + '</label>';
+                
+                switch (field.type) {
+                    case 'textarea':
+                        html += '<textarea style="width:100%; padding:10px; border:1px solid #ddd; border-radius:4px; min-height:100px;" placeholder="' + this.escapeHtml(field.placeholder || '') + '" disabled></textarea>';
+                        break;
+                    case 'select':
+                        html += '<select style="width:100%; padding:10px; border:1px solid #ddd; border-radius:4px;" disabled><option>Seleziona...</option>';
+                        (field.options || []).forEach(opt => {
+                            html += '<option>' + this.escapeHtml(opt) + '</option>';
+                        });
+                        html += '</select>';
+                        break;
+                    case 'checkbox':
+                        (field.options || []).forEach(opt => {
+                            html += '<div style="margin-bottom:5px;"><label style="font-weight:normal;"><input type="checkbox" disabled> ' + this.escapeHtml(opt) + '</label></div>';
+                        });
+                        break;
+                    case 'radio':
+                        (field.options || []).forEach(opt => {
+                            html += '<div style="margin-bottom:5px;"><label style="font-weight:normal;"><input type="radio" disabled> ' + this.escapeHtml(opt) + '</label></div>';
+                        });
+                        break;
+                    default:
+                        html += '<input type="' + field.type + '" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:4px;" placeholder="' + this.escapeHtml(field.placeholder || '') + '" disabled>';
+                }
+                
+                html += '</div>';
+            });
+            
+            // GDPR
+            if ($('#dbfb-enable-gdpr').is(':checked')) {
+                const gdprText = $('#dbfb-gdpr-text').val() || 'Acconsento al trattamento dei dati personali';
+                html += '<div style="margin-bottom:18px;"><label style="font-weight:normal;"><input type="checkbox" disabled> ' + this.escapeHtml(gdprText) + ' <span style="color:#d63638;">*</span></label></div>';
+            }
+            
+            // Submit button
+            const submitText = $('#dbfb-submit-text').val() || 'Invia';
+            html += '<div style="margin-top:20px;"><button type="button" style="padding:12px 30px; background:#2271b1; color:#fff; border:none; border-radius:4px; font-size:16px; cursor:default;">' + this.escapeHtml(submitText) + '</button></div>';
+            
+            $('#dbfb-preview-content').html(html);
+            $('#dbfb-preview-modal').fadeIn(200);
         },
         
         addField: function(type) {
@@ -206,7 +287,6 @@
             this.renderField(field);
             this.updateEmptyState();
             
-            // Apri settings del nuovo campo
             $('.dbfb-field-item[data-id="' + id + '"]').addClass('open');
         },
         
@@ -237,7 +317,6 @@
         },
         
         getFieldSettings: function(field) {
-            // Campi contenuto statico (no label standard)
             if (field.type === 'divider') {
                 return `
                     <div class="dbfb-field-row">
@@ -273,7 +352,6 @@
                 `;
             }
             
-            // Campi input standard
             let html = `
                 <div class="dbfb-field-row">
                     <label>Etichetta</label>
@@ -330,14 +408,12 @@
             const field = this.fields.find(f => f.id === id);
             
             if (field) {
-                // Campi standard
                 const labelInput = $item.find('.field-label-input').val();
                 if (labelInput !== undefined) field.label = labelInput;
                 
                 field.placeholder = $item.find('.field-placeholder').val() || '';
                 field.required = $item.find('.field-required').is(':checked');
                 
-                // Opzioni per select/radio/checkbox
                 const options = [];
                 $item.find('.field-option').each(function() {
                     const val = $(this).val().trim();
@@ -345,12 +421,10 @@
                 });
                 if (options.length) field.options = options;
                 
-                // Campi contenuto
                 field.content = $item.find('.field-content').val() || '';
                 field.image_url = $item.find('.field-image-url').val() || '';
                 field.image_alt = $item.find('.field-image-alt').val() || '';
                 
-                // Update header label
                 if (labelInput !== undefined) {
                     $item.find('.dbfb-field-title .field-label').text(field.label);
                 }
@@ -434,6 +508,13 @@
                 submit_text: $('#dbfb-submit-text').val(),
                 success_message: $('#dbfb-success-message').val(),
                 enable_captcha: $('#dbfb-enable-captcha').is(':checked'),
+                enable_honeypot: $('#dbfb-enable-honeypot').is(':checked'),
+                enable_gdpr: $('#dbfb-enable-gdpr').is(':checked'),
+                gdpr_text: $('#dbfb-gdpr-text').val(),
+                gdpr_link: $('#dbfb-gdpr-link').val(),
+                rate_limit_enabled: $('#dbfb-rate-limit-enabled').is(':checked'),
+                rate_limit_max: $('#dbfb-rate-limit-max').val(),
+                rate_limit_window: $('#dbfb-rate-limit-window').val(),
                 send_confirmation: $('#dbfb-send-confirmation').is(':checked'),
                 confirmation_subject: $('#dbfb-confirmation-subject').val(),
                 confirmation_message: $('#dbfb-confirmation-message').val(),
@@ -458,9 +539,8 @@
                 if (response.success) {
                     this.formId = response.data.form_id;
                     $('#dbfb-form-id').val(this.formId);
-                    $('.dbfb-shortcode').text('[dbfb_form id="' + this.formId + '"]');
+                    $('.dbfb-shortcode').text('[dbfb_form id="' + this.formId + '"]').css('opacity', 1);
                     
-                    // Mostra notifica
                     const $notice = $('<div class="dbfb-notice">' + response.data.message + '</div>');
                     $('.dbfb-wrap').prepend($notice);
                     setTimeout(() => $notice.fadeOut(300, function() { $(this).remove(); }), 3000);
@@ -489,13 +569,11 @@
             var $btn = $(this);
             
             if (template === 'blank') {
-                // Form vuoto - mostra direttamente il builder
                 $('.dbfb-templates-section').slideUp(300);
                 $('.dbfb-builder-section').slideDown(300);
                 return;
             }
             
-            // Crea form da template via AJAX
             $btn.prop('disabled', true).text('Creazione...');
             
             $.post(dbfb.ajax_url, {

@@ -3,9 +3,21 @@
 $global_settings = DB_Form_Builder::get_global_settings();
 $enable_captcha = !empty($form_settings['enable_captcha']) && !empty($global_settings['recaptcha_site_key']);
 $recaptcha_version = $global_settings['recaptcha_version'] ?? 'v2';
+$enable_honeypot = !empty($form_settings['enable_honeypot']);
+$enable_gdpr = !empty($form_settings['enable_gdpr']);
 ?>
 
 <form class="dbfb-form" data-form-id="<?php echo esc_attr($form_id); ?>" <?php if ($enable_captcha && $recaptcha_version === 'v3'): ?>data-recaptcha-v3="1"<?php endif; ?>>
+    
+    <?php // Honeypot: campo invisibile che solo i bot compilano ?>
+    <?php if ($enable_honeypot): ?>
+    <div style="position:absolute;left:-9999px;top:-9999px;opacity:0;height:0;width:0;overflow:hidden;" aria-hidden="true" tabindex="-1">
+        <label for="dbfb_website_url_<?php echo $form_id; ?>">Website</label>
+        <input type="text" name="dbfb_website_url" id="dbfb_website_url_<?php echo $form_id; ?>" value="" autocomplete="off" tabindex="-1">
+    </div>
+    <input type="hidden" name="dbfb_timestamp" value="<?php echo time(); ?>">
+    <?php endif; ?>
+    
     <?php foreach ($form_fields as $field): ?>
         <?php 
         // Campi contenuto statico (non input)
@@ -109,6 +121,25 @@ $recaptcha_version = $global_settings['recaptcha_version'] ?? 'v2';
     <?php if ($enable_captcha && $recaptcha_version === 'v2'): ?>
     <div class="dbfb-form-group dbfb-recaptcha-container">
         <div class="g-recaptcha" data-sitekey="<?php echo esc_attr($global_settings['recaptcha_site_key']); ?>"></div>
+    </div>
+    <?php endif; ?>
+    
+    <?php // GDPR Checkbox ?>
+    <?php if ($enable_gdpr): ?>
+    <div class="dbfb-form-group dbfb-gdpr-group">
+        <div class="dbfb-checkbox-item">
+            <input type="checkbox" id="dbfb-gdpr-<?php echo $form_id; ?>" name="dbfb_gdpr_consent" value="1" required>
+            <label for="dbfb-gdpr-<?php echo $form_id; ?>">
+                <?php 
+                $gdpr_text = $form_settings['gdpr_text'] ?? __('Acconsento al trattamento dei dati personali', 'db-form-builder');
+                $gdpr_link = $form_settings['gdpr_link'] ?? '';
+                echo esc_html($gdpr_text);
+                if ($gdpr_link): ?>
+                    <a href="<?php echo esc_url($gdpr_link); ?>" target="_blank" rel="noopener"><?php _e('Leggi la Privacy Policy', 'db-form-builder'); ?></a>
+                <?php endif; ?>
+                <span class="required">*</span>
+            </label>
+        </div>
     </div>
     <?php endif; ?>
     

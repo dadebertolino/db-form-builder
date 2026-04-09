@@ -27,7 +27,6 @@
                 setAttributes({ formId: newFormId });
             };
             
-            // Se nessun form selezionato, mostra placeholder
             if (!formId) {
                 return el(Placeholder, {
                     icon: 'feedback',
@@ -42,7 +41,6 @@
                 );
             }
             
-            // Form selezionato - mostra anteprima
             const selectedForm = forms.find(f => f.value == formId);
             const formName = selectedForm ? selectedForm.label : 'Form #' + formId;
             
@@ -79,7 +77,6 @@
         },
         
         save: function() {
-            // Rendering dinamico via PHP
             return null;
         }
     });

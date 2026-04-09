@@ -88,7 +88,6 @@
     margin-top: 20px;
 }
 
-/* Sidebar con tipi di campo */
 .dbfb-sidebar {
     background: #fff;
     border: 1px solid #c3c4c7;
@@ -147,7 +146,6 @@
     margin-top: 5px;
 }
 
-/* Canvas area */
 .dbfb-canvas {
     background: #fff;
     border: 1px solid #c3c4c7;
@@ -182,7 +180,6 @@
     font-style: italic;
 }
 
-/* Campo nel canvas */
 .dbfb-field-item {
     background: #fff;
     border: 1px solid #ddd;
@@ -247,7 +244,6 @@
     color: #d63638;
 }
 
-/* Campo settings (collassabile) */
 .dbfb-field-settings {
     padding: 15px;
     display: none;
@@ -306,7 +302,6 @@
     margin-top: 8px;
 }
 
-/* Settings panel */
 .dbfb-settings-panel {
     margin-top: 20px;
     background: #fff;
@@ -337,6 +332,7 @@
 
 .dbfb-settings-row input[type="text"],
 .dbfb-settings-row input[type="email"],
+.dbfb-settings-row input[type="url"],
 .dbfb-settings-row textarea {
     width: 100%;
     max-width: 500px;
@@ -349,7 +345,6 @@
     min-height: 80px;
 }
 
-/* Actions */
 .dbfb-actions {
     margin-top: 20px;
     padding: 15px 20px;
@@ -371,7 +366,6 @@
     cursor: pointer;
 }
 
-/* Lista form */
 .dbfb-forms-table {
     width: 100%;
     background: #fff;
@@ -407,13 +401,12 @@
     font-size: 12px;
 }
 
-/* Submissions */
 .dbfb-submissions-table {
     width: 100%;
     background: #fff;
     border-collapse: collapse;
     border: 1px solid #c3c4c7;
-    margin-top: 20px;
+    margin-top: 10px;
 }
 
 .dbfb-submissions-table th,
@@ -432,7 +425,6 @@
     font-weight: 600;
 }
 
-/* Notice */
 .dbfb-notice {
     padding: 12px 15px;
     border-left: 4px solid #00a32a;
@@ -440,7 +432,6 @@
     margin-bottom: 20px;
 }
 
-/* Responsive */
 @media (max-width: 782px) {
     .dbfb-builder {
         grid-template-columns: 1fr;

@@ -74,11 +74,7 @@
                 <div class="dbfb-recaptcha-test" style="margin-top: 20px; padding: 15px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
                     <h4 style="margin-top: 0;"><?php _e('Testa le chiavi', 'db-form-builder'); ?></h4>
                     <p class="description"><?php _e('Verifica che le chiavi siano corrette prima di salvare.', 'db-form-builder'); ?></p>
-                    
-                    <div id="dbfb-recaptcha-test-container" style="margin: 15px 0;">
-                        <!-- Widget v2 o info v3 caricate via JS -->
-                    </div>
-                    
+                    <div id="dbfb-recaptcha-test-container" style="margin: 15px 0;"></div>
                     <button type="button" id="dbfb-test-recaptcha" class="button">
                         <?php _e('Verifica chiavi', 'db-form-builder'); ?>
                     </button>
@@ -117,7 +113,6 @@
                 <div class="dbfb-email-test" style="margin-top: 20px; padding: 15px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
                     <h4 style="margin-top: 0;"><?php _e('Testa invio email', 'db-form-builder'); ?></h4>
                     <p class="description"><?php _e('Verifica che il server possa inviare email correttamente.', 'db-form-builder'); ?></p>
-                    
                     <div style="margin: 15px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <input type="email" id="dbfb-test-email-address" class="regular-text" 
                                placeholder="<?php _e('Email destinatario', 'db-form-builder'); ?>"
@@ -145,30 +140,12 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td><code>{form_titolo}</code></td>
-                            <td><?php _e('Nome del form', 'db-form-builder'); ?></td>
-                        </tr>
-                        <tr>
-                            <td><code>{riepilogo_dati}</code></td>
-                            <td><?php _e('Elenco completo di tutti i campi compilati', 'db-form-builder'); ?></td>
-                        </tr>
-                        <tr>
-                            <td><code>{nome}</code>, <code>{email}</code>, ecc.</td>
-                            <td><?php _e('Valore del singolo campo (usa il nome del campo)', 'db-form-builder'); ?></td>
-                        </tr>
-                        <tr>
-                            <td><code>{ip}</code></td>
-                            <td><?php _e('Indirizzo IP del visitatore', 'db-form-builder'); ?></td>
-                        </tr>
-                        <tr>
-                            <td><code>{data}</code></td>
-                            <td><?php _e('Data e ora dell\'invio', 'db-form-builder'); ?></td>
-                        </tr>
-                        <tr>
-                            <td><code>{sito}</code></td>
-                            <td><?php _e('Nome del sito', 'db-form-builder'); ?></td>
-                        </tr>
+                        <tr><td><code>{form_titolo}</code></td><td><?php _e('Nome del form', 'db-form-builder'); ?></td></tr>
+                        <tr><td><code>{riepilogo_dati}</code></td><td><?php _e('Elenco completo di tutti i campi compilati', 'db-form-builder'); ?></td></tr>
+                        <tr><td><code>{nome}</code>, <code>{email}</code>, ecc.</td><td><?php _e('Valore del singolo campo (usa il nome del campo)', 'db-form-builder'); ?></td></tr>
+                        <tr><td><code>{ip}</code></td><td><?php _e('Indirizzo IP del visitatore', 'db-form-builder'); ?></td></tr>
+                        <tr><td><code>{data}</code></td><td><?php _e('Data e ora dell\'invio', 'db-form-builder'); ?></td></tr>
+                        <tr><td><code>{sito}</code></td><td><?php _e('Nome del sito', 'db-form-builder'); ?></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -195,11 +172,6 @@
     padding-bottom: 10px;
     border-bottom: 1px solid #eee;
 }
-.dbfb-notice.info {
-    background: #e7f3ff;
-    border-left: 4px solid #2271b1;
-    padding: 10px 15px;
-}
 </style>
 
 <script>
@@ -207,11 +179,8 @@ jQuery(document).ready(function($) {
     var recaptchaWidgetId = null;
     var recaptchaLoaded = false;
     
-    // Funzione per caricare lo script reCAPTCHA
     function loadRecaptchaScript(version, siteKey, callback) {
-        // Rimuovi script precedente se esiste
         $('script[src*="recaptcha"]').remove();
-        
         var script = document.createElement('script');
         if (version === 'v3') {
             script.src = 'https://www.google.com/recaptcha/api.js?render=' + siteKey;
@@ -221,215 +190,111 @@ jQuery(document).ready(function($) {
         script.async = true;
         script.defer = true;
         document.head.appendChild(script);
-        
-        if (version === 'v3') {
-            script.onload = callback;
-        }
+        if (version === 'v3') script.onload = callback;
     }
     
-    // Callback per reCAPTCHA v2
     window.dbfbRecaptchaCallback = function() {
         recaptchaLoaded = true;
         renderRecaptchaWidget();
     };
     
-    // Renderizza widget v2
     function renderRecaptchaWidget() {
         var siteKey = $('#recaptcha_site_key').val();
         var container = document.getElementById('dbfb-recaptcha-test-container');
-        
         if (!siteKey || !container) return;
-        
         container.innerHTML = '';
-        
         if (typeof grecaptcha !== 'undefined' && grecaptcha.render) {
             try {
-                recaptchaWidgetId = grecaptcha.render(container, {
-                    'sitekey': siteKey,
-                    'theme': 'light'
-                });
+                recaptchaWidgetId = grecaptcha.render(container, { 'sitekey': siteKey, 'theme': 'light' });
             } catch(e) {
                 container.innerHTML = '<p style="color:#d63638;">Errore nel caricamento del widget. Verifica la Site Key.</p>';
             }
         }
     }
     
-    // Aggiorna widget quando cambiano versione o site key
     function updateTestWidget() {
         var version = $('#recaptcha_version').val();
         var siteKey = $('#recaptcha_site_key').val();
         var container = $('#dbfb-recaptcha-test-container');
-        
         container.html('');
         $('#dbfb-test-result').html('');
-        
         if (!siteKey) {
-            container.html('<p style="color:#666;"><?php _e('Inserisci la Site Key per testare', 'db-form-builder'); ?></p>');
+            container.html('<p style="color:#666;">Inserisci la Site Key per testare</p>');
             return;
         }
-        
         if (version === 'v3') {
-            container.html('<p style="color:#666;"><?php _e('reCAPTCHA v3 è invisibile. Clicca "Verifica chiavi" per testare.', 'db-form-builder'); ?></p>');
-            loadRecaptchaScript('v3', siteKey, function() {
-                recaptchaLoaded = true;
-            });
+            container.html('<p style="color:#666;">reCAPTCHA v3 è invisibile. Clicca "Verifica chiavi" per testare.</p>');
+            loadRecaptchaScript('v3', siteKey, function() { recaptchaLoaded = true; });
         } else {
-            container.html('<p style="color:#666;"><?php _e('Caricamento widget...', 'db-form-builder'); ?></p>');
+            container.html('<p style="color:#666;">Caricamento widget...</p>');
             loadRecaptchaScript('v2', siteKey, null);
         }
     }
     
-    // Event listeners
-    $('#recaptcha_version, #recaptcha_site_key').on('change', function() {
-        setTimeout(updateTestWidget, 100);
-    });
+    $('#recaptcha_version, #recaptcha_site_key').on('change', function() { setTimeout(updateTestWidget, 100); });
     
-    // Test button
     $('#dbfb-test-recaptcha').on('click', function() {
-        var $btn = $(this);
-        var $result = $('#dbfb-test-result');
-        var version = $('#recaptcha_version').val();
-        var siteKey = $('#recaptcha_site_key').val();
-        var secretKey = $('#recaptcha_secret_key').val();
-        
-        if (!siteKey || !secretKey) {
-            $result.html('<span style="color:#d63638;"><?php _e('Inserisci entrambe le chiavi', 'db-form-builder'); ?></span>');
-            return;
-        }
-        
+        var $btn = $(this), $result = $('#dbfb-test-result');
+        var version = $('#recaptcha_version').val(), siteKey = $('#recaptcha_site_key').val(), secretKey = $('#recaptcha_secret_key').val();
+        if (!siteKey || !secretKey) { $result.html('<span style="color:#d63638;">Inserisci entrambe le chiavi</span>'); return; }
         $btn.prop('disabled', true);
-        $result.html('<span style="color:#666;"><?php _e('Verifica in corso...', 'db-form-builder'); ?></span>');
-        
+        $result.html('<span style="color:#666;">Verifica in corso...</span>');
         var getToken = new Promise(function(resolve, reject) {
             if (version === 'v3') {
-                if (typeof grecaptcha !== 'undefined') {
-                    grecaptcha.ready(function() {
-                        grecaptcha.execute(siteKey, {action: 'test'}).then(resolve).catch(reject);
-                    });
-                } else {
-                    reject('grecaptcha non caricato');
-                }
+                if (typeof grecaptcha !== 'undefined') { grecaptcha.ready(function() { grecaptcha.execute(siteKey, {action: 'test'}).then(resolve).catch(reject); }); } else { reject('grecaptcha non caricato'); }
             } else {
-                if (typeof grecaptcha !== 'undefined' && recaptchaWidgetId !== null) {
-                    var response = grecaptcha.getResponse(recaptchaWidgetId);
-                    if (response) {
-                        resolve(response);
-                    } else {
-                        reject('Completa la verifica "Non sono un robot"');
-                    }
-                } else {
-                    reject('Widget non caricato');
-                }
+                if (typeof grecaptcha !== 'undefined' && recaptchaWidgetId !== null) { var response = grecaptcha.getResponse(recaptchaWidgetId); if (response) { resolve(response); } else { reject('Completa la verifica "Non sono un robot"'); } } else { reject('Widget non caricato'); }
             }
         });
-        
         getToken.then(function(token) {
-            $.post(dbfb.ajax_url, {
-                action: 'dbfb_test_recaptcha',
-                nonce: dbfb.nonce,
-                site_key: siteKey,
-                secret_key: secretKey,
-                version: version,
-                token: token
-            })
+            $.post(dbfb.ajax_url, { action: 'dbfb_test_recaptcha', nonce: dbfb.nonce, site_key: siteKey, secret_key: secretKey, version: version, token: token })
             .done(function(response) {
-                if (response.success) {
-                    $result.html('<span style="color:#00a32a;">' + response.data.message + '</span>');
-                } else {
-                    $result.html('<span style="color:#d63638;">' + response.data.message + '</span>');
-                }
-                
-                // Reset widget v2
-                if (version === 'v2' && typeof grecaptcha !== 'undefined' && recaptchaWidgetId !== null) {
-                    grecaptcha.reset(recaptchaWidgetId);
-                }
+                $result.html('<span style="color:' + (response.success ? '#00a32a' : '#d63638') + ';">' + response.data.message + '</span>');
+                if (version === 'v2' && typeof grecaptcha !== 'undefined' && recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId);
             })
-            .fail(function() {
-                $result.html('<span style="color:#d63638;"><?php _e('Errore di connessione', 'db-form-builder'); ?></span>');
-            })
-            .always(function() {
-                $btn.prop('disabled', false);
-            });
-        }).catch(function(err) {
-            $result.html('<span style="color:#d63638;">' + err + '</span>');
-            $btn.prop('disabled', false);
-        });
+            .fail(function() { $result.html('<span style="color:#d63638;">Errore di connessione</span>'); })
+            .always(function() { $btn.prop('disabled', false); });
+        }).catch(function(err) { $result.html('<span style="color:#d63638;">' + err + '</span>'); $btn.prop('disabled', false); });
     });
     
-    // Init
     <?php if (!empty($global_settings['recaptcha_site_key'])): ?>
     setTimeout(updateTestWidget, 500);
     <?php endif; ?>
     
     // Test Email
     $('#dbfb-test-email').on('click', function() {
-        var $btn = $(this);
-        var $result = $('#dbfb-test-email-result');
+        var $btn = $(this), $result = $('#dbfb-test-email-result');
         var toEmail = $('#dbfb-test-email-address').val();
         var fromName = $('#from_name').val() || '<?php echo esc_js(get_bloginfo('name')); ?>';
         var fromEmail = $('#from_email').val() || '<?php echo esc_js(get_option('admin_email')); ?>';
-        
-        if (!toEmail) {
-            $result.html('<span style="color:#d63638;"><?php _e('Inserisci un indirizzo email', 'db-form-builder'); ?></span>');
-            return;
-        }
-        
+        if (!toEmail) { $result.html('<span style="color:#d63638;">Inserisci un indirizzo email</span>'); return; }
         $btn.prop('disabled', true);
-        $result.html('<span style="color:#666;"><?php _e('Invio in corso...', 'db-form-builder'); ?></span>');
-        
-        $.post(dbfb.ajax_url, {
-            action: 'dbfb_test_email',
-            nonce: dbfb.nonce,
-            to_email: toEmail,
-            from_name: fromName,
-            from_email: fromEmail
-        })
-        .done(function(response) {
-            if (response.success) {
-                $result.html('<span style="color:#00a32a;">' + response.data.message + '</span>');
-            } else {
-                $result.html('<span style="color:#d63638;">' + response.data.message + '</span>');
-            }
-        })
-        .fail(function() {
-            $result.html('<span style="color:#d63638;"><?php _e('Errore di connessione', 'db-form-builder'); ?></span>');
-        })
-        .always(function() {
-            $btn.prop('disabled', false);
-        });
+        $result.html('<span style="color:#666;">Invio in corso...</span>');
+        $.post(dbfb.ajax_url, { action: 'dbfb_test_email', nonce: dbfb.nonce, to_email: toEmail, from_name: fromName, from_email: fromEmail })
+        .done(function(response) { $result.html('<span style="color:' + (response.success ? '#00a32a' : '#d63638') + ';">' + response.data.message + '</span>'); })
+        .fail(function() { $result.html('<span style="color:#d63638;">Errore di connessione</span>'); })
+        .always(function() { $btn.prop('disabled', false); });
     });
     
-    // Salvataggio impostazioni
+    // Save settings
     $('#dbfb-global-settings-form').on('submit', function(e) {
         e.preventDefault();
-        
         var $btn = $('#dbfb-save-global-settings');
-        $btn.prop('disabled', true).text('<?php _e('Salvataggio...', 'db-form-builder'); ?>');
-        
+        $btn.prop('disabled', true).text('Salvataggio...');
         $.post(dbfb.ajax_url, {
-            action: 'dbfb_save_global_settings',
-            nonce: dbfb.nonce,
-            recaptcha_version: $('#recaptcha_version').val(),
-            recaptcha_site_key: $('#recaptcha_site_key').val(),
-            recaptcha_secret_key: $('#recaptcha_secret_key').val(),
-            from_email: $('#from_email').val(),
-            from_name: $('#from_name').val()
+            action: 'dbfb_save_global_settings', nonce: dbfb.nonce,
+            recaptcha_version: $('#recaptcha_version').val(), recaptcha_site_key: $('#recaptcha_site_key').val(),
+            recaptcha_secret_key: $('#recaptcha_secret_key').val(), from_email: $('#from_email').val(), from_name: $('#from_name').val()
         })
         .done(function(response) {
             if (response.success) {
                 var $notice = $('<div class="dbfb-notice" style="margin-bottom:20px;">' + response.data.message + '</div>');
                 $('.dbfb-settings-page').prepend($notice);
                 setTimeout(function() { $notice.fadeOut(300, function() { $(this).remove(); }); }, 3000);
-            } else {
-                alert(response.data.message || 'Errore');
-            }
+            } else { alert(response.data.message || 'Errore'); }
         })
-        .fail(function() {
-            alert('Errore durante il salvataggio');
-        })
-        .always(function() {
-            $btn.prop('disabled', false).text('<?php _e('Salva Impostazioni', 'db-form-builder'); ?>');
-        });
+        .fail(function() { alert('Errore durante il salvataggio'); })
+        .always(function() { $btn.prop('disabled', false).text('Salva Impostazioni'); });
     });
 });
 </script>

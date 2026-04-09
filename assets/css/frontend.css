@@ -50,7 +50,6 @@
     resize: vertical;
 }
 
-/* Checkbox e Radio */
 .dbfb-checkbox-group,
 .dbfb-radio-group {
     display: flex;
@@ -78,7 +77,6 @@
     cursor: pointer;
 }
 
-/* Submit button */
 .dbfb-submit {
     padding: 12px 30px;
     background: #2271b1;
@@ -100,7 +98,6 @@
     cursor: not-allowed;
 }
 
-/* Loading state */
 .dbfb-form.loading .dbfb-submit {
     position: relative;
     color: transparent;
@@ -124,7 +121,6 @@
     to { transform: rotate(360deg); }
 }
 
-/* Messages */
 .dbfb-message {
     padding: 15px 20px;
     border-radius: 4px;
@@ -143,7 +139,6 @@
     color: #721c24;
 }
 
-/* Field errors */
 .dbfb-form-group.error input,
 .dbfb-form-group.error textarea,
 .dbfb-form-group.error select {
@@ -156,7 +151,6 @@
     margin-top: 5px;
 }
 
-/* Static content */
 .dbfb-divider {
     margin: 25px 0;
 }
@@ -182,7 +176,6 @@
     border-radius: 4px;
 }
 
-/* reCAPTCHA notice */
 .dbfb-recaptcha-notice {
     margin-top: 15px;
     color: #666;
@@ -193,7 +186,19 @@
     color: #2271b1;
 }
 
-/* Responsive */
+/* GDPR checkbox */
+.dbfb-gdpr-group {
+    padding: 12px 15px;
+    background: #f9f9f9;
+    border: 1px solid #eee;
+    border-radius: 4px;
+}
+
+.dbfb-gdpr-group a {
+    color: #2271b1;
+    margin-left: 5px;
+}
+
 @media (max-width: 600px) {
     .dbfb-form {
         padding: 0 15px;
@@ -202,6 +207,6 @@
     .dbfb-form-group input,
     .dbfb-form-group textarea,
     .dbfb-form-group select {
-        font-size: 16px; /* Previene zoom su iOS */
+        font-size: 16px;
     }
 }

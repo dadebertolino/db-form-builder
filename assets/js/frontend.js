@@ -16,10 +16,20 @@
             const name = $field.attr('name');
             const type = $field.attr('type');
             
+            // Skip honeypot e timestamp (inviati separatamente)
+            if (name === 'dbfb_website_url' || name === 'dbfb_timestamp') return;
+            
             if (type === 'checkbox') {
-                if (!formData[name]) formData[name] = [];
-                if ($field.is(':checked')) {
-                    formData[name].push($field.val());
+                if (name === 'dbfb_gdpr_consent') {
+                    // GDPR: salva come valore singolo
+                    if ($field.is(':checked')) {
+                        formData[name] = $field.val();
+                    }
+                } else {
+                    if (!formData[name]) formData[name] = [];
+                    if ($field.is(':checked')) {
+                        formData[name].push($field.val());
+                    }
                 }
             } else if (type === 'radio') {
                 if ($field.is(':checked')) {
@@ -35,9 +45,12 @@
         $form.find('.dbfb-field-error').remove();
         $form.find('.dbfb-message').remove();
         
+        // Honeypot data
+        const honeypotValue = $form.find('[name="dbfb_website_url"]').val() || '';
+        const timestamp = $form.find('[name="dbfb_timestamp"]').val() || '';
+        
         // Funzione per inviare il form
         const submitForm = function(recaptchaToken) {
-            // Loading state
             $form.addClass('loading');
             $form.find('.dbfb-submit').prop('disabled', true);
             
@@ -46,19 +59,19 @@
                 nonce: dbfb.nonce,
                 form_id: formId,
                 data: JSON.stringify(formData),
-                recaptcha_token: recaptchaToken || ''
+                recaptcha_token: recaptchaToken || '',
+                dbfb_website_url: honeypotValue,
+                dbfb_timestamp: timestamp
             })
             .done(function(response) {
                 if (response.success) {
                     $form.prepend('<div class="dbfb-message success">' + response.data.message + '</div>');
                     $form[0].reset();
                     
-                    // Reset reCAPTCHA v2 se presente
                     if (typeof grecaptcha !== 'undefined' && hasV2Widget) {
                         grecaptcha.reset();
                     }
                     
-                    // Scroll al messaggio
                     $('html, body').animate({
                         scrollTop: $form.offset().top - 50
                     }, 300);
@@ -79,7 +92,6 @@
         // Gestisci reCAPTCHA
         if (typeof grecaptcha !== 'undefined' && dbfb.recaptcha_site_key) {
             if (isV3) {
-                // reCAPTCHA v3 (invisibile)
                 grecaptcha.ready(function() {
                     grecaptcha.execute(dbfb.recaptcha_site_key, {action: 'submit'}).then(function(token) {
                         submitForm(token);
@@ -89,7 +101,6 @@
                     });
                 });
             } else if (hasV2Widget) {
-                // reCAPTCHA v2 - ottieni token dal widget
                 const response = grecaptcha.getResponse();
                 if (!response) {
                     $form.prepend('<div class="dbfb-message error">Completa la verifica "Non sono un robot"</div>');
@@ -97,7 +108,6 @@
                 }
                 submitForm(response);
             } else {
-                // Nessun captcha attivo
                 submitForm('');
             }
         } else {

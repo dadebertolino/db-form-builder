@@ -3,9 +3,16 @@
 <div class="dbfb-wrap" id="dbfb-form-builder">
     <div class="dbfb-header">
         <h1><?php echo $form_id ? __('Modifica Form', 'db-form-builder') : __('Nuovo Form', 'db-form-builder'); ?></h1>
-        <a href="<?php echo admin_url('admin.php?page=dbfb-forms'); ?>" class="button">
-            &larr; <?php _e('Tutti i Form', 'db-form-builder'); ?>
-        </a>
+        <div>
+            <?php if ($form_id): ?>
+                <button type="button" id="dbfb-preview-btn" class="button" title="<?php _e('Anteprima form', 'db-form-builder'); ?>">
+                    <span class="dashicons dashicons-visibility" style="margin-top:3px;"></span> <?php _e('Anteprima', 'db-form-builder'); ?>
+                </button>
+            <?php endif; ?>
+            <a href="<?php echo admin_url('admin.php?page=dbfb-forms'); ?>" class="button">
+                &larr; <?php _e('Tutti i Form', 'db-form-builder'); ?>
+            </a>
+        </div>
     </div>
     
     <?php if (!empty($show_templates)): ?>
@@ -15,7 +22,6 @@
         <p class="description"><?php _e('Seleziona un template predefinito o inizia da zero', 'db-form-builder'); ?></p>
         
         <div class="dbfb-templates-grid">
-            <!-- Template vuoto -->
             <div class="dbfb-template-card" data-template="blank">
                 <div class="dbfb-template-icon">
                     <span class="dashicons dashicons-plus-alt2"></span>
@@ -125,7 +131,7 @@
                 </div>
             </div>
             
-            <!-- Impostazioni -->
+            <!-- Impostazioni Form -->
             <div class="dbfb-settings-panel">
                 <h3><?php _e('Impostazioni Form', 'db-form-builder'); ?></h3>
                 <div class="dbfb-settings-content">
@@ -154,6 +160,58 @@
                                 <?php printf(__('Configura prima le chiavi reCAPTCHA nelle <a href="%s">Impostazioni</a>', 'db-form-builder'), admin_url('admin.php?page=dbfb-settings')); ?>
                             </p>
                         <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sicurezza & Privacy -->
+            <div class="dbfb-settings-panel">
+                <h3><?php _e('Sicurezza & Privacy', 'db-form-builder'); ?></h3>
+                <div class="dbfb-settings-content">
+                    <div class="dbfb-settings-row">
+                        <label>
+                            <input type="checkbox" id="dbfb-enable-honeypot" <?php checked(!empty($form_settings['enable_honeypot'])); ?>>
+                            <?php _e('Honeypot anti-spam (invisibile, alternativa a reCAPTCHA)', 'db-form-builder'); ?>
+                        </label>
+                        <p class="description"><?php _e('Aggiunge un campo nascosto che solo i bot compilano. Nessun impatto visivo.', 'db-form-builder'); ?></p>
+                    </div>
+                    
+                    <div class="dbfb-settings-row">
+                        <label>
+                            <input type="checkbox" id="dbfb-enable-gdpr" <?php checked(!empty($form_settings['enable_gdpr'])); ?>>
+                            <?php _e('Checkbox accettazione privacy / GDPR', 'db-form-builder'); ?>
+                        </label>
+                    </div>
+                    
+                    <div class="dbfb-settings-row" id="dbfb-gdpr-options" style="<?php echo empty($form_settings['enable_gdpr']) ? 'display:none;' : ''; ?> margin-left: 25px;">
+                        <div style="margin-bottom: 10px;">
+                            <label for="dbfb-gdpr-text"><?php _e('Testo del consenso', 'db-form-builder'); ?></label>
+                            <input type="text" id="dbfb-gdpr-text" value="<?php echo esc_attr($form_settings['gdpr_text']); ?>" style="width:100%; max-width:500px;">
+                        </div>
+                        <div>
+                            <label for="dbfb-gdpr-link"><?php _e('Link alla Privacy Policy (opzionale)', 'db-form-builder'); ?></label>
+                            <input type="url" id="dbfb-gdpr-link" value="<?php echo esc_attr($form_settings['gdpr_link']); ?>" placeholder="https://..." style="width:100%; max-width:500px;">
+                        </div>
+                    </div>
+                    
+                    <div class="dbfb-settings-row">
+                        <label>
+                            <input type="checkbox" id="dbfb-rate-limit-enabled" <?php checked(!empty($form_settings['rate_limit_enabled'])); ?>>
+                            <?php _e('Limita invii per IP', 'db-form-builder'); ?>
+                        </label>
+                    </div>
+                    
+                    <div class="dbfb-settings-row" id="dbfb-rate-limit-options" style="<?php echo empty($form_settings['rate_limit_enabled']) ? 'display:none;' : ''; ?> margin-left: 25px;">
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <div>
+                                <label for="dbfb-rate-limit-max"><?php _e('Max invii', 'db-form-builder'); ?></label>
+                                <input type="number" id="dbfb-rate-limit-max" value="<?php echo esc_attr($form_settings['rate_limit_max']); ?>" min="1" max="100" style="width:80px;">
+                            </div>
+                            <div>
+                                <label for="dbfb-rate-limit-window"><?php _e('In minuti', 'db-form-builder'); ?></label>
+                                <input type="number" id="dbfb-rate-limit-window" value="<?php echo esc_attr($form_settings['rate_limit_window']); ?>" min="1" max="1440" style="width:80px;">
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -208,8 +266,8 @@
                     
                     <div class="dbfb-settings-row">
                         <label for="dbfb-admin-email"><?php _e('Email destinatario', 'db-form-builder'); ?></label>
-                        <input type="email" id="dbfb-admin-email" value="<?php echo esc_attr($form_settings['admin_email']); ?>">
-                        <p class="description"><?php _e('Puoi inserire più email separate da virgola', 'db-form-builder'); ?></p>
+                        <input type="text" id="dbfb-admin-email" value="<?php echo esc_attr($form_settings['admin_email']); ?>">
+                        <p class="description"><?php _e('Puoi inserire più email separate da virgola (es: admin@sito.it, staff@sito.it)', 'db-form-builder'); ?></p>
                     </div>
                     
                     <div class="dbfb-settings-row">
@@ -260,3 +318,22 @@
     </div><!-- .dbfb-builder-section -->
     <?php endif; ?>
 </div>
+
+<!-- Modale Anteprima -->
+<?php if ($form_id): ?>
+<div id="dbfb-preview-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:100000;">
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; border-radius:8px; padding:30px; max-width:700px; width:90%; max-height:85vh; overflow-y:auto; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:10px;">
+            <h3 style="margin:0;">
+                <span class="dashicons dashicons-visibility" style="margin-right:5px;"></span>
+                <?php _e('Anteprima Form', 'db-form-builder'); ?>
+            </h3>
+            <button type="button" id="dbfb-preview-close" style="background:none; border:none; font-size:24px; cursor:pointer; color:#666;">&times;</button>
+        </div>
+        <div id="dbfb-preview-content" style="border:1px solid #eee; border-radius:4px; padding:20px;"></div>
+        <p style="margin:15px 0 0; color:#999; font-size:12px; text-align:center;">
+            <?php _e('Questa è un\'anteprima. Il form non è funzionante in questa modalità.', 'db-form-builder'); ?>
+        </p>
+    </div>
+</div>
+<?php endif; ?>

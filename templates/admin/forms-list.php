@@ -12,6 +12,10 @@
         <div class="dbfb-notice"><?php _e('Form eliminato con successo.', 'db-form-builder'); ?></div>
     <?php endif; ?>
     
+    <?php if (isset($_GET['duplicated'])): ?>
+        <div class="dbfb-notice"><?php _e('Form duplicato con successo.', 'db-form-builder'); ?></div>
+    <?php endif; ?>
+    
     <?php if (empty($forms)): ?>
         <div class="dbfb-empty">
             <p><?php _e('Nessun form creato. Crea il tuo primo form!', 'db-form-builder'); ?></p>
@@ -49,8 +53,12 @@
                             <a href="<?php echo admin_url('admin.php?page=dbfb-forms&action=submissions&form_id=' . $form->ID); ?>">
                                 <?php _e('Risposte', 'db-form-builder'); ?>
                             </a>
+                            <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=dbfb-forms&action=duplicate&form_id=' . $form->ID), 'dbfb_duplicate_' . $form->ID); ?>"
+                               title="<?php _e('Crea una copia di questo form', 'db-form-builder'); ?>">
+                                <?php _e('Duplica', 'db-form-builder'); ?>
+                            </a>
                             <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=dbfb-forms&action=delete&form_id=' . $form->ID), 'dbfb_delete_' . $form->ID); ?>" 
-                               onclick="return confirm('<?php _e('Sei sicuro di voler eliminare questo form?', 'db-form-builder'); ?>');"
+                               onclick="return confirm('<?php _e('Sei sicuro di voler eliminare questo form e tutte le sue risposte? Questa azione è irreversibile.', 'db-form-builder'); ?>');"
                                style="color: #d63638;">
                                 <?php _e('Elimina', 'db-form-builder'); ?>
                             </a>
