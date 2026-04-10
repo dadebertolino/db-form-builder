@@ -451,3 +451,49 @@
         flex: 1 1 calc(50% - 4px);
     }
 }
+
+/* Logica Condizionale */
+.dbfb-conditions-section {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px dashed #ddd;
+}
+
+.dbfb-conditions-header label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.dbfb-conditions-body {
+    margin-top: 10px;
+    padding: 12px;
+    background: #f9f9f9;
+    border: 1px solid #eee;
+    border-radius: 4px;
+}
+
+.dbfb-conditions-config {
+    font-size: 13px;
+    color: #333;
+}
+
+.dbfb-conditions-config select {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+.dbfb-condition-rule select,
+.dbfb-condition-rule input[type="text"] {
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+.dbfb-condition-rule .dbfb-remove-condition-rule:hover {
+    color: #a00;
+}

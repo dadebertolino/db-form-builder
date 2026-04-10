@@ -101,6 +101,10 @@
                     <span class="dashicons dashicons-admin-links"></span>
                     <span><?php _e('URL', 'db-form-builder'); ?></span>
                 </div>
+                <div class="dbfb-field-type" data-type="file">
+                    <span class="dashicons dashicons-paperclip"></span>
+                    <span><?php _e('Upload file', 'db-form-builder'); ?></span>
+                </div>
                 
                 <div class="dbfb-field-type-divider"><?php _e('Contenuti', 'db-form-builder'); ?></div>
                 
@@ -115,6 +119,10 @@
                 <div class="dbfb-field-type" data-type="divider">
                     <span class="dashicons dashicons-minus"></span>
                     <span><?php _e('Separatore', 'db-form-builder'); ?></span>
+                </div>
+                <div class="dbfb-field-type" data-type="pagebreak">
+                    <span class="dashicons dashicons-editor-break"></span>
+                    <span><?php _e('Cambio pagina', 'db-form-builder'); ?></span>
                 </div>
             </div>
         </div>
@@ -292,6 +300,27 @@
                         </div>
                     </div>
                     <?php endif; ?>
+                </div>
+            </div>
+            
+            <!-- Webhook -->
+            <div class="dbfb-settings-panel">
+                <h3><?php _e('Webhook', 'db-form-builder'); ?></h3>
+                <div class="dbfb-settings-content">
+                    <div class="dbfb-settings-row">
+                        <label>
+                            <input type="checkbox" id="dbfb-enable-webhook" <?php checked(!empty($form_settings['enable_webhook'])); ?>>
+                            <?php _e('Invia dati a URL esterno dopo ogni invio', 'db-form-builder'); ?>
+                        </label>
+                    </div>
+                    
+                    <div class="dbfb-settings-row" id="dbfb-webhook-options" style="<?php echo empty($form_settings['enable_webhook']) ? 'display:none;' : ''; ?>">
+                        <label for="dbfb-webhook-url"><?php _e('URL Webhook', 'db-form-builder'); ?></label>
+                        <input type="url" id="dbfb-webhook-url" value="<?php echo esc_attr($form_settings['webhook_url']); ?>" placeholder="https://esempio.com/webhook">
+                        <p class="description">
+                            <?php _e('Riceverà un POST JSON con: form_id, form_title, submitted_at, ip, fields (array con id, label, type, value) e raw_data. Compatibile con Zapier, Make, n8n, endpoint custom.', 'db-form-builder'); ?>
+                        </p>
+                    </div>
                 </div>
             </div>
             

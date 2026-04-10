@@ -99,6 +99,53 @@
                 this.updateFieldData($item);
             });
             
+            // --- LOGICA CONDIZIONALE ---
+            
+            // Toggle pannello condizioni
+            $(document).on('change', '.field-conditions-enabled', (e) => {
+                const $body = $(e.currentTarget).closest('.dbfb-conditions-section').find('.dbfb-conditions-body');
+                $body.toggle(e.currentTarget.checked);
+                this.updateFieldData($(e.currentTarget).closest('.dbfb-field-item'));
+            });
+            
+            // Aggiungi regola condizione
+            $(document).on('click', '.dbfb-add-condition-rule', (e) => {
+                e.preventDefault();
+                const $item = $(e.currentTarget).closest('.dbfb-field-item');
+                const fieldId = $item.data('id');
+                const otherFields = this.fields.filter(f => f.id !== fieldId && !['divider','html','image'].includes(f.type));
+                const ruleHtml = this.getConditionRuleHTML({ field: '', operator: 'equals', value: '' }, otherFields);
+                $(e.currentTarget).prev('.dbfb-conditions-rules').append(ruleHtml);
+                this.updateFieldData($item);
+            });
+            
+            // Rimuovi regola condizione
+            $(document).on('click', '.dbfb-remove-condition-rule', (e) => {
+                e.preventDefault();
+                const $item = $(e.currentTarget).closest('.dbfb-field-item');
+                $(e.currentTarget).closest('.dbfb-condition-rule').remove();
+                this.updateFieldData($item);
+            });
+            
+            // Mostra/nascondi campo valore quando operatore è empty/not_empty
+            $(document).on('change', '.condition-operator', function() {
+                const $rule = $(this).closest('.dbfb-condition-rule');
+                const op = $(this).val();
+                if (op === 'empty' || op === 'not_empty') {
+                    $rule.find('.condition-value').hide().val('');
+                } else {
+                    $rule.find('.condition-value').show();
+                }
+            });
+            
+            // Update condizioni su change di select/input nelle regole
+            $(document).on('change', '.condition-field, .condition-value', (e) => {
+                this.updateFieldData($(e.currentTarget).closest('.dbfb-field-item'));
+            });
+            $(document).on('change', '.field-conditions-action, .field-conditions-logic', (e) => {
+                this.updateFieldData($(e.currentTarget).closest('.dbfb-field-item'));
+            });
+            
             // Salva form
             $('#dbfb-save-form').on('click', (e) => {
                 e.preventDefault();
@@ -192,6 +239,11 @@
             // Toggle Rate Limit options
             $('#dbfb-rate-limit-enabled').on('change', function() {
                 $('#dbfb-rate-limit-options').toggle(this.checked);
+            });
+            
+            // Toggle Webhook options
+            $('#dbfb-enable-webhook').on('change', function() {
+                $('#dbfb-webhook-options').toggle(this.checked);
             });
             
             // Anteprima
@@ -312,7 +364,11 @@
                 options: ['select', 'radio', 'checkbox'].includes(type) ? ['Opzione 1', 'Opzione 2'] : [],
                 content: type === 'html' ? '<p>Inserisci qui il tuo testo</p>' : '',
                 image_url: '',
-                image_alt: ''
+                image_alt: '',
+                conditions: { enabled: false, action: 'show', logic: 'all', rules: [] },
+                file_extensions: type === 'file' ? 'jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,zip' : '',
+                file_max_size: type === 'file' ? 5 : 0,
+                file_multiple: false
             };
             
             this.fields.push(field);
@@ -357,6 +413,14 @@
                 `;
             }
             
+            if (field.type === 'pagebreak') {
+                return `
+                    <div class="dbfb-field-row">
+                        <p class="description">Divide il form in più pagine. I campi prima di questo elemento saranno nello step precedente, quelli dopo nello step successivo. L'utente vedrà una barra di progresso e i bottoni Indietro/Avanti.</p>
+                    </div>
+                `;
+            }
+            
             if (field.type === 'html') {
                 return `
                     <div class="dbfb-field-row">
@@ -365,6 +429,38 @@
                         <p class="description">Puoi usare HTML per formattazione (es: &lt;strong&gt;, &lt;em&gt;, &lt;a&gt;)</p>
                     </div>
                 `;
+            }
+            
+            if (field.type === 'file') {
+                let html = `
+                    <div class="dbfb-field-row">
+                        <label>Etichetta</label>
+                        <input type="text" class="field-label-input" value="${this.escapeHtml(field.label)}">
+                    </div>
+                    <div class="dbfb-field-row">
+                        <label>Estensioni ammesse</label>
+                        <input type="text" class="field-file-extensions" value="${this.escapeHtml(field.file_extensions || 'jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,zip')}">
+                        <p class="description">Separate da virgola, senza punto (es: jpg,png,pdf)</p>
+                    </div>
+                    <div class="dbfb-field-row">
+                        <label>Dimensione massima (MB)</label>
+                        <input type="number" class="field-file-max-size" value="${field.file_max_size || 5}" min="1" max="50" style="width:80px;">
+                    </div>
+                    <div class="dbfb-field-row">
+                        <label>
+                            <input type="checkbox" class="field-file-multiple" ${field.file_multiple ? 'checked' : ''}>
+                            Consenti file multipli
+                        </label>
+                    </div>
+                    <div class="dbfb-field-row">
+                        <label>
+                            <input type="checkbox" class="field-required" ${field.required ? 'checked' : ''}>
+                            Campo obbligatorio
+                        </label>
+                    </div>
+                `;
+                html += this.getConditionsHTML(field);
+                return html;
             }
             
             if (field.type === 'image') {
@@ -421,7 +517,100 @@
                 </div>
             `;
             
+            // Logica condizionale
+            html += this.getConditionsHTML(field);
+            
             return html;
+        },
+        
+        getConditionsHTML: function(field) {
+            const conditions = field.conditions || { enabled: false, action: 'show', logic: 'all', rules: [] };
+            const otherFields = this.fields.filter(f => f.id !== field.id && !['divider','html','image'].includes(f.type));
+            
+            if (otherFields.length === 0) {
+                return ''; // No fields to create conditions against
+            }
+            
+            let html = `
+                <div class="dbfb-field-row dbfb-conditions-section">
+                    <div class="dbfb-conditions-header">
+                        <label>
+                            <input type="checkbox" class="field-conditions-enabled" ${conditions.enabled ? 'checked' : ''}>
+                            <strong>Logica condizionale</strong>
+                        </label>
+                    </div>
+                    <div class="dbfb-conditions-body" style="${conditions.enabled ? '' : 'display:none;'}">
+                        <div class="dbfb-conditions-config" style="margin: 10px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <select class="field-conditions-action" style="width:auto;">
+                                <option value="show" ${conditions.action === 'show' ? 'selected' : ''}>Mostra</option>
+                                <option value="hide" ${conditions.action === 'hide' ? 'selected' : ''}>Nascondi</option>
+                            </select>
+                            <span>questo campo se</span>
+                            <select class="field-conditions-logic" style="width:auto;">
+                                <option value="all" ${conditions.logic === 'all' ? 'selected' : ''}>tutte</option>
+                                <option value="any" ${conditions.logic === 'any' ? 'selected' : ''}>almeno una</option>
+                            </select>
+                            <span>delle seguenti condizioni sono vere:</span>
+                        </div>
+                        <div class="dbfb-conditions-rules">
+            `;
+            
+            if (conditions.rules && conditions.rules.length) {
+                conditions.rules.forEach(rule => {
+                    html += this.getConditionRuleHTML(rule, otherFields);
+                });
+            }
+            
+            html += `
+                        </div>
+                        <button type="button" class="button dbfb-add-condition-rule" style="margin-top: 8px;">+ Aggiungi condizione</button>
+                    </div>
+                </div>
+            `;
+            
+            return html;
+        },
+        
+        getConditionRuleHTML: function(rule, otherFields) {
+            rule = rule || { field: '', operator: 'equals', value: '' };
+            
+            let fieldOptions = otherFields.map(f => 
+                `<option value="${f.id}" ${rule.field === f.id ? 'selected' : ''}>${this.escapeHtml(f.label)}</option>`
+            ).join('');
+            
+            const operators = [
+                ['equals', 'è uguale a'],
+                ['not_equals', 'è diverso da'],
+                ['contains', 'contiene'],
+                ['not_contains', 'non contiene'],
+                ['empty', 'è vuoto'],
+                ['not_empty', 'non è vuoto'],
+                ['greater_than', 'è maggiore di'],
+                ['less_than', 'è minore di']
+            ];
+            
+            let operatorOptions = operators.map(([val, label]) => 
+                `<option value="${val}" ${rule.operator === val ? 'selected' : ''}>${label}</option>`
+            ).join('');
+            
+            const hideValue = ['empty', 'not_empty'].includes(rule.operator);
+            
+            return `
+                <div class="dbfb-condition-rule" style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap;">
+                    <select class="condition-field" style="flex: 1; min-width: 120px;">
+                        <option value="">— Seleziona campo —</option>
+                        ${fieldOptions}
+                    </select>
+                    <select class="condition-operator" style="width: auto; min-width: 120px;">
+                        ${operatorOptions}
+                    </select>
+                    <input type="text" class="condition-value" value="${this.escapeHtml(rule.value || '')}" 
+                           placeholder="Valore" style="flex: 1; min-width: 100px; ${hideValue ? 'display:none;' : ''}">
+                    <button type="button" class="dbfb-remove-condition-rule" title="Rimuovi" style="background:none; border:none; cursor:pointer; color:#d63638; padding:5px;">
+                        <span class="dashicons dashicons-no-alt"></span>
+                    </button>
+                </div>
+            `;
         },
         
         getOptionHTML: function(value) {
@@ -456,6 +645,30 @@
                 field.content = $item.find('.field-content').val() || '';
                 field.image_url = $item.find('.field-image-url').val() || '';
                 field.image_alt = $item.find('.field-image-alt').val() || '';
+                field.file_extensions = $item.find('.field-file-extensions').val() || '';
+                field.file_max_size = parseInt($item.find('.field-file-max-size').val()) || 5;
+                field.file_multiple = $item.find('.field-file-multiple').is(':checked');
+                
+                // Logica condizionale
+                const condEnabled = $item.find('.field-conditions-enabled').is(':checked');
+                const rules = [];
+                $item.find('.dbfb-condition-rule').each(function() {
+                    const $rule = $(this);
+                    const ruleField = $rule.find('.condition-field').val();
+                    if (ruleField) {
+                        rules.push({
+                            field: ruleField,
+                            operator: $rule.find('.condition-operator').val() || 'equals',
+                            value: $rule.find('.condition-value').val() || ''
+                        });
+                    }
+                });
+                field.conditions = {
+                    enabled: condEnabled,
+                    action: $item.find('.field-conditions-action').val() || 'show',
+                    logic: $item.find('.field-conditions-logic').val() || 'all',
+                    rules: rules
+                };
                 
                 if (labelInput !== undefined) {
                     $item.find('.dbfb-field-title .field-label').text(field.label);
@@ -498,7 +711,9 @@
                 'url': 'URL',
                 'html': 'Testo statico',
                 'image': 'Immagine',
-                'divider': 'Separatore'
+                'divider': 'Separatore',
+                'file': 'Upload file',
+                'pagebreak': 'Cambio pagina'
             };
             return labels[type] || 'Campo';
         },
@@ -517,7 +732,9 @@
                 'url': 'dashicons-admin-links',
                 'html': 'dashicons-text',
                 'image': 'dashicons-format-image',
-                'divider': 'dashicons-minus'
+                'divider': 'dashicons-minus',
+                'file': 'dashicons-paperclip',
+                'pagebreak': 'dashicons-editor-break'
             };
             return icons[type] || 'dashicons-admin-generic';
         },
@@ -553,7 +770,9 @@
                 send_admin_notification: $('#dbfb-send-admin-notification').is(':checked'),
                 admin_email: $('#dbfb-admin-email').val(),
                 admin_subject: $('#dbfb-admin-subject').val(),
-                admin_message: $('#dbfb-admin-message').val()
+                admin_message: $('#dbfb-admin-message').val(),
+                enable_webhook: $('#dbfb-enable-webhook').is(':checked'),
+                webhook_url: $('#dbfb-webhook-url').val()
             };
             
             const $btn = $('#dbfb-save-form');

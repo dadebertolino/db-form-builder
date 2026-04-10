@@ -366,3 +366,273 @@
         border: 2px solid CanvasText;
     }
 }
+
+/* Conditional logic: smooth transitions */
+.dbfb-conditional {
+    overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dbfb-conditional {
+        transition: none;
+    }
+}
+
+/* File Upload — Drag & Drop */
+.dbfb-file-dropzone {
+    border: 2px dashed #767676;
+    border-radius: 8px;
+    padding: 25px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s;
+    position: relative;
+}
+
+.dbfb-file-dropzone:hover,
+.dbfb-file-dropzone:focus-visible {
+    border-color: #0056b3;
+    background: #f0f6fc;
+}
+
+.dbfb-file-dropzone.dbfb-file-dragover {
+    border-color: #0056b3;
+    background: #e3effa;
+    border-style: solid;
+}
+
+.dbfb-file-dropzone.dbfb-file-has-files {
+    border-style: solid;
+    border-color: #0056b3;
+}
+
+.dbfb-file-dropzone:focus-visible {
+    outline: 3px solid #0056b3;
+    outline-offset: 2px;
+}
+
+.dbfb-file-dropzone-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.dbfb-file-icon {
+    font-size: 32px;
+    line-height: 1;
+}
+
+.dbfb-file-text {
+    color: #5a5a5a;
+    font-size: 14px;
+}
+
+.dbfb-file-input {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    border: 0 !important;
+}
+
+.dbfb-file-info {
+    font-size: 12px;
+    color: #5a5a5a;
+    margin-top: 6px;
+}
+
+/* File list */
+.dbfb-file-list {
+    margin-top: 10px;
+    text-align: left;
+}
+
+.dbfb-file-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.dbfb-file-item.dbfb-file-error {
+    background: #fef2f2;
+    border-color: #b32d2e;
+}
+
+.dbfb-file-name {
+    flex: 1;
+    font-weight: 500;
+    color: #1a1a1a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dbfb-file-size {
+    color: #5a5a5a;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.dbfb-file-error-msg {
+    color: #b32d2e;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.dbfb-file-remove {
+    background: none;
+    border: none;
+    color: #b32d2e;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+    min-width: 30px;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+}
+
+.dbfb-file-remove:hover {
+    background: #fef2f2;
+}
+
+.dbfb-file-remove:focus-visible {
+    outline: 3px solid #0056b3;
+    outline-offset: 1px;
+}
+
+/* Error state on dropzone */
+.dbfb-form-group.error .dbfb-file-dropzone {
+    border-color: #b32d2e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dbfb-file-dropzone {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .dbfb-file-dropzone {
+        border: 2px dashed ButtonText;
+    }
+    .dbfb-file-dropzone.dbfb-file-dragover {
+        border-style: solid;
+        border-color: Highlight;
+    }
+}
+
+/* Multi-Step Form */
+.dbfb-multistep {
+    margin-bottom: 20px;
+}
+
+.dbfb-progress {
+    background: #e9ecef;
+    border-radius: 8px;
+    height: 32px;
+    margin-bottom: 25px;
+    overflow: hidden;
+    position: relative;
+}
+
+.dbfb-progress-bar {
+    background: #0056b3;
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 60px;
+}
+
+.dbfb-progress-text {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.dbfb-step {
+    /* Steps are shown/hidden by JS */
+}
+
+.dbfb-step-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+.dbfb-step-prev,
+.dbfb-step-next {
+    min-height: 44px;
+    padding: 10px 24px;
+    border-radius: 4px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: background 0.2s;
+}
+
+.dbfb-step-prev {
+    background: #e9ecef;
+    color: #1a1a1a;
+}
+
+.dbfb-step-prev:hover {
+    background: #d3d6db;
+}
+
+.dbfb-step-next {
+    background: #0056b3;
+    color: #fff;
+    margin-left: auto;
+}
+
+.dbfb-step-next:hover {
+    background: #003d80;
+}
+
+.dbfb-step-prev:focus-visible,
+.dbfb-step-next:focus-visible {
+    outline: 3px solid #0056b3;
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dbfb-progress-bar {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .dbfb-progress {
+        border: 1px solid CanvasText;
+    }
+    .dbfb-progress-bar {
+        background: Highlight;
+    }
+    .dbfb-step-prev,
+    .dbfb-step-next {
+        border: 2px solid ButtonText;
+    }
+}

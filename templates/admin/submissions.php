@@ -77,10 +77,22 @@
                             <td><?php echo date_i18n('d/m/Y H:i', strtotime($submission->submitted_at)); ?></td>
                             <?php foreach ($form_fields as $field): 
                                 $value = isset($data[$field['id']]) ? $data[$field['id']] : '';
-                                if (is_array($value)) $value = implode(', ', $value);
+                                $display = '';
+                                if ($field['type'] === 'file' && !empty($value)) {
+                                    // Single file or multiple
+                                    if (isset($value['name'])) {
+                                        $display = $value['name'];
+                                    } elseif (is_array($value)) {
+                                        $names = array_map(function($f) { return is_array($f) ? $f['name'] : $f; }, $value);
+                                        $display = implode(', ', $names);
+                                    }
+                                } else {
+                                    if (is_array($value)) $value = implode(', ', $value);
+                                    $display = $value;
+                                }
                             ?>
-                                <td title="<?php echo esc_attr($value); ?>">
-                                    <?php echo esc_html(mb_strimwidth($value, 0, 50, '...')); ?>
+                                <td title="<?php echo esc_attr(is_array($display) ? '' : $display); ?>">
+                                    <?php echo esc_html(mb_strimwidth(is_array($display) ? '' : $display, 0, 50, '...')); ?>
                                 </td>
                             <?php endforeach; ?>
                             <td><?php echo esc_html($submission->ip_address); ?></td>
@@ -155,8 +167,23 @@ jQuery(document).ready(function($) {
         
         for (var key in labels) {
             var value = fields[key] || '';
-            if (Array.isArray(value)) value = value.join(', ');
-            html += '<tr><th>' + labels[key] + '</th><td style="word-break:break-word;">' + $('<div>').text(value).html() + '</td></tr>';
+            var cellHtml = '';
+            
+            // Check if value is a file object or array of file objects
+            if (value && typeof value === 'object' && value.url) {
+                // Single file
+                cellHtml = '<a href="' + value.url + '" target="_blank" rel="noopener">📎 ' + $('<span>').text(value.name).html() + '</a>';
+            } else if (Array.isArray(value) && value.length && value[0] && typeof value[0] === 'object' && value[0].url) {
+                // Multiple files
+                cellHtml = value.map(function(f) {
+                    return '<a href="' + f.url + '" target="_blank" rel="noopener">📎 ' + $('<span>').text(f.name).html() + '</a>';
+                }).join('<br>');
+            } else {
+                if (Array.isArray(value)) value = value.join(', ');
+                cellHtml = $('<div>').text(value).html();
+            }
+            
+            html += '<tr><th>' + labels[key] + '</th><td style="word-break:break-word;">' + cellHtml + '</td></tr>';
         }
         html += '</table>';
         

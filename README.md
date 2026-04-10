@@ -1,6 +1,6 @@
 # DB Form Builder
 
-Plugin WordPress per la creazione di form con drag & drop.
+Plugin WordPress per la creazione di form con drag & drop, logica condizionale, upload file, multi-step e webhook.
 
 **Autore:** Davide Bertolino  
 **Sito:** [https://www.davidebertolino.it](https://www.davidebertolino.it)  
@@ -9,25 +9,24 @@ Plugin WordPress per la creazione di form con drag & drop.
 
 ## Funzionalità
 
-- **Form Builder drag & drop** - Trascina i campi per costruire il form
-- **13 tipi di elemento:**
-  - Input: Testo, Email, Textarea, Select, Checkbox, Radio, Telefono, Numero, Data, URL
+- **Form Builder drag & drop** — 14 tipi di elemento con riordino visuale
+  - Input: Testo, Email, Textarea, Select, Checkbox, Radio, Telefono, Numero, Data, URL, Upload file
   - Contenuti: Testo/HTML statico, Immagine, Separatore
-- **Protezione anti-spam** - Google reCAPTCHA v2/v3 + Honeypot invisibile
-- **GDPR / Privacy** - Checkbox consenso obbligatorio con link alla Privacy Policy
-- **Limite invii per IP** - Controlla spam limitando invii per indirizzo IP
-- **Email personalizzabili** - Conferma utente e notifica admin con placeholder dinamici
-- **Notifiche multiple** - Invio a più destinatari admin separati da virgola
-- **Test email** - Verifica le email prima di pubblicare
-- **Gestione risposte** - Visualizza, dettaglio modale, elimina singole o in blocco
-- **Duplica form** - Crea copie di form esistenti con un click
-- **Anteprima form** - Visualizza il form nel builder prima di pubblicare
-- **Export CSV** - Esporta i dati in CSV (compatibile Excel)
-- **Template predefiniti** - 5 template pronti all'uso
-- **Shortcode** - Inserisci i form ovunque con `[dbfb_form id="X"]`
-- **Blocco Gutenberg** - Inserisci i form dall'editor blocchi
-- **Widget classico** - Per sidebar e footer
-- **Accessibilità WCAG 2.1 AA** - Form completamente accessibili: ARIA, focus management, contrasto colori, reduced motion, high contrast mode
+  - Struttura: Cambio pagina (multi-step)
+- **Logica condizionale** — Mostra/nascondi campi in base alle risposte (8 operatori, AND/OR)
+- **Upload file** — Drag & drop o click, estensioni configurabili, dimensione max per campo, file multipli, validazione client + server
+- **Form multi-step** — Barra di progresso, navigazione avanti/indietro, validazione per step
+- **Webhook** — POST JSON a URL esterno dopo ogni invio (compatibile Zapier, Make, n8n)
+- **Protezione anti-spam** — Google reCAPTCHA v2/v3 + Honeypot invisibile
+- **GDPR / Privacy** — Checkbox consenso obbligatorio con link alla Privacy Policy
+- **Limite invii per IP** — Configurabile per form (max N invii in X minuti)
+- **Email personalizzabili** — Conferma utente + notifica admin (più destinatari) con placeholder dinamici
+- **Gestione risposte** — Dettaglio modale, elimina singole/bulk, export CSV, file come link scaricabili
+- **Duplica form** — Copia campi e impostazioni con un click
+- **Anteprima** — Visualizza il form nel builder prima di pubblicare
+- **Template predefiniti** — 5 modelli pronti all'uso
+- **Integrazione WordPress** — Shortcode, blocco Gutenberg, widget classico
+- **Accessibilità WCAG 2.1 AA** — ARIA completo, focus management, contrasto, reduced motion, high contrast mode
 
 ## Installazione
 
@@ -42,115 +41,111 @@ Plugin WordPress per la creazione di form con drag & drop.
 2. Inserisci Site Key e Secret Key da [Google reCAPTCHA](https://www.google.com/recaptcha/admin)
 3. Abilita il CAPTCHA singolarmente per ogni form
 
-### Honeypot (alternativa a reCAPTCHA)
-Attivabile per singolo form. Aggiunge un campo nascosto che solo i bot compilano + verifica tempo di compilazione. Nessun impatto visivo per gli utenti.
+### Honeypot
+Attivabile per form. Campo nascosto + verifica tempo di compilazione. Nessun impatto visivo.
 
 ### GDPR
-Per ogni form puoi attivare un checkbox obbligatorio di consenso privacy, con testo personalizzabile e link alla tua Privacy Policy.
+Checkbox obbligatorio configurabile con testo e link alla Privacy Policy.
 
 ### Limite invii per IP
-Configurabile per form: massimo N invii in X minuti dallo stesso IP.
+Massimo N invii in X minuti dallo stesso IP, configurabile per form.
+
+### Logica condizionale
+Per ogni campo, abilita "Logica condizionale" nelle impostazioni:
+- Scegli Mostra/Nascondi
+- Seleziona il campo trigger, l'operatore e il valore
+- Aggiungi più regole con logica AND (tutte) o OR (almeno una)
+- Operatori: uguale, diverso, contiene, non contiene, vuoto, non vuoto, maggiore di, minore di
+
+### Upload file
+Trascina il campo "Upload file" nel builder e configura:
+- Estensioni ammesse (default: jpg, jpeg, png, gif, pdf, doc, docx, xls, xlsx, zip)
+- Dimensione massima per file (default: 5 MB)
+- File multipli sì/no
+- I file vengono salvati in `wp-content/uploads/dbfb/{form_id}/`
+
+### Multi-step
+Trascina "Cambio pagina" tra i campi per dividere il form in step. Il frontend mostra automaticamente barra di progresso, bottoni Indietro/Avanti e validazione per step.
+
+### Webhook
+Attivabile per form. Inserisci l'URL e ad ogni invio il plugin fa un POST JSON con form_id, form_title, submitted_at, ip, fields (array con id, label, type, value) e raw_data. Compatibile con Zapier, Make, n8n, endpoint custom.
 
 ### Email
-Configura il mittente nelle Impostazioni globali. Personalizza oggetto e messaggio per ogni form usando i placeholder:
-- `{form_titolo}` - Nome del form
-- `{riepilogo_dati}` - Tutti i campi compilati
-- `{nome}`, `{email}`, ecc. - Singoli campi
+Configura il mittente nelle Impostazioni globali. Personalizza oggetto e messaggio per ogni form. Più destinatari admin separati da virgola. Placeholder:
+- `{form_titolo}` — Nome del form
+- `{riepilogo_dati}` — Tutti i campi compilati
+- `{nome}`, `{email}`, ecc. — Singoli campi
 - `{ip}`, `{data}`, `{sito}`
-
-Per notifiche a più admin, separa le email con virgola.
 
 ## Utilizzo
 
 ### Creare un form
-1. Vai su Form Builder > Nuovo Form
-2. Scegli un template o inizia da zero
-3. Trascina i campi dalla sidebar al canvas
-4. Configura etichette, placeholder e opzioni
-5. Imposta sicurezza (honeypot, GDPR, rate limit)
-6. Imposta email di conferma e notifiche
-7. Usa "Anteprima" per verificare il risultato
-8. Salva e copia lo shortcode
+1. Form Builder > Nuovo Form
+2. Scegli template o parti da zero
+3. Trascina campi, configura, imposta sicurezza/email/webhook
+4. Anteprima, salva, copia shortcode
 
-### Inserire nel sito
+### Shortcode
 ```
 [dbfb_form id="123"]
 ```
 
 ### Duplicare un form
-Dalla lista form, clicca "Duplica" per creare una copia.
+Lista form > Duplica
 
-### Visualizzare risposte
-Form Builder > Risposte oppure dalla lista form > Risposte
+### Risposte
+Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 
-### Eliminare risposte
-Dalla pagina risposte: elimina singolarmente o usa "Seleziona tutti" + "Elimina selezionate"
+## Accessibilità (WCAG 2.1 AA)
 
-### Esportare dati
-Dalla pagina risposte, clicca "Esporta CSV"
+- `aria-required`, `aria-invalid`, `aria-describedby` su tutti i campi
+- `fieldset`/`legend` per gruppi checkbox e radio
+- `role="alert"` e `aria-live` per messaggi di stato
+- Focus management su errori/messaggi e dopo chiusura modali
+- Focus trap e Escape su modali
+- `focus-visible` con outline ad alto contrasto
+- Touch target minimo 44×44px
+- Contrasto ≥ 4.5:1 su tutti i testi e componenti
+- `prefers-reduced-motion` e `forced-colors` supportati
+- Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
 
+### 2.2.0
+- Aggiunto: Logica condizionale (mostra/nascondi campi, 8 operatori, AND/OR)
+- Aggiunto: Upload file con drag & drop (estensioni, dimensione max, multipli, validazione client + server)
+- Aggiunto: Form multi-step con barra di progresso, navigazione, validazione per step
+- Aggiunto: Webhook POST JSON a URL esterno (compatibile Zapier, Make, n8n)
+- Aggiunto: Tipo campo "Cambio pagina" per dividere form in step
+- Aggiunto: Reset automatico form dopo invio (fade messaggio + ritorno step 1)
+- Migliorato: Refactor codice — da 1 file monolite a 8 classi in `inc/`
+- Migliorato: Submit form usa FormData (supporto file binari)
+- Migliorato: Sicurezza upload — blacklist estensioni, wp_check_filetype, .htaccess anti-PHP
+
 ### 2.1.0
 - Aggiunto: Conformità WCAG 2.1 AA completa
-- Aggiunto: `aria-required`, `aria-invalid`, `aria-describedby` su tutti i campi
-- Aggiunto: `fieldset`/`legend` per gruppi checkbox e radio
-- Aggiunto: `role="alert"` e `aria-live` per messaggi di stato (screen reader)
-- Aggiunto: Focus management — focus su errore/messaggio dopo invio, restore focus dopo chiusura modale
-- Aggiunto: Focus trap e chiusura con Escape su tutte le modali (dialog pattern ARIA)
-- Aggiunto: `focus-visible` con outline ad alto contrasto (3px #0056b3)
-- Aggiunto: Touch target minimo 44×44px su pulsanti, checkbox, radio
-- Aggiunto: `prefers-reduced-motion` — animazioni disabilitate
-- Aggiunto: `forced-colors` — supporto Windows High Contrast Mode
-- Aggiunto: `screen-reader-text` per "(obbligatorio)" e "(si apre in una nuova finestra)"
-- Aggiunto: `autocomplete` su campi email, telefono, URL
-- Aggiunto: `novalidate` sul form (validazione gestita via JS per messaggi accessibili)
-- Aggiunto: `aria-busy` sul pulsante durante il caricamento
-- Migliorato: Contrast ratio ≥ 4.5:1 su tutti i testi e bordi input
-- Migliorato: Link distinguibili non solo per colore (underline)
-- Migliorato: Pulizia errore inline in tempo reale al cambio valore campo
+- Aggiunto: aria-required, aria-invalid, aria-describedby, fieldset/legend
+- Aggiunto: Focus management, focus trap, focus-visible
+- Aggiunto: prefers-reduced-motion, forced-colors
+- Aggiunto: Touch target 44×44px, contrasto ≥ 4.5:1
 
 ### 2.0.0
 - Aggiunto: Duplicazione form
 - Aggiunto: Anteprima form nel builder
-- Aggiunto: Eliminazione singole risposte
-- Aggiunto: Eliminazione massiva risposte (bulk)
-- Aggiunto: Dettaglio risposta in modale
-- Aggiunto: Honeypot anti-spam (campo nascosto + timestamp)
-- Aggiunto: Checkbox GDPR/privacy obbligatorio
-- Aggiunto: Limite invii per IP (rate limiting)
+- Aggiunto: Eliminazione singole risposte e bulk delete
+- Aggiunto: Honeypot anti-spam
+- Aggiunto: Checkbox GDPR/privacy
+- Aggiunto: Rate limiting per IP
 - Aggiunto: Notifiche admin a più destinatari
-- Migliorato: Conferma eliminazione form più esplicita
-- Migliorato: Campi statici esclusi da CSV e riepilogo email
 
 ### 1.3.0
-- Fix: Headers already sent su eliminazione form
-- Fix: reCAPTCHA v3 script URL con render=SITE_KEY
-- Fix: Creazione tabella DB just-in-time
-- Aggiunto: Template predefiniti (5)
-- Aggiunto: Blocco Gutenberg
-- Aggiunto: Widget classico
+- Aggiunto: 5 template predefiniti
+- Aggiunto: Blocco Gutenberg e widget classico
 - Aggiunto: Test email e reCAPTCHA nelle impostazioni
-- Aggiunto: Impostazioni globali email
+- Fix: Headers already sent, reCAPTCHA v3 URL, creazione tabella DB
 
 ### 1.0.0
 - Release iniziale
-
-## Accessibilità (WCAG 2.1 AA)
-
-Il plugin è conforme alle linee guida WCAG 2.1 livello AA. I form generati includono:
-
-- Struttura semantica corretta (`fieldset`/`legend` per gruppi, `label` associati)
-- Attributi ARIA completi (`aria-required`, `aria-invalid`, `aria-describedby`, `aria-live`)
-- Focus management: focus automatico su messaggi di errore/successo, restore focus dopo chiusura modali
-- Focus trap nelle modali con chiusura via tasto Escape
-- Indicatore di focus ad alto contrasto visibile da tastiera (`focus-visible`)
-- Contrast ratio ≥ 4.5:1 su tutti i testi, bordi e componenti UI
-- Touch target minimo 44×44px
-- Supporto `prefers-reduced-motion` (animazioni disabilitate)
-- Supporto Windows High Contrast Mode (`forced-colors`)
-- Testi nascosti per screen reader: "(obbligatorio)", "(si apre in una nuova finestra)"
-- Validazione inline in tempo reale con pulizia errori
 
 ## Requisiti
 
@@ -161,23 +156,32 @@ Il plugin è conforme alle linee guida WCAG 2.1 livello AA. I form generati incl
 
 ```
 db-form-builder/
-├── db-form-builder.php          # File principale
+├── db-form-builder.php              # Bootstrap
 ├── README.md
+├── inc/
+│   ├── class-core.php               # Singleton, hooks, CPT, menu, scripts, routing
+│   ├── class-builder.php            # Form builder, save, sanitize, templates
+│   ├── class-submit.php             # Submit, honeypot, GDPR, reCAPTCHA, file upload, webhook
+│   ├── class-submissions.php        # Risposte, CSV export
+│   ├── class-email.php              # Placeholder, invio email, test
+│   ├── class-settings.php           # Impostazioni globali, test reCAPTCHA/email
+│   ├── class-gutenberg.php          # Blocco Gutenberg
+│   └── class-widget.php             # Widget classico
 ├── assets/
 │   ├── css/
-│   │   ├── admin.css            # Stili admin
-│   │   └── frontend.css         # Stili frontend
+│   │   ├── admin.css
+│   │   └── frontend.css
 │   └── js/
-│       ├── admin.js             # Drag & drop builder + anteprima
-│       ├── frontend.js          # Invio AJAX form + honeypot
-│       └── gutenberg-block.js   # Blocco Gutenberg
+│       ├── admin.js                 # Builder, condizionale, file settings
+│       ├── frontend.js              # Submit, condizionale, file drag&drop, multi-step
+│       └── gutenberg-block.js
 └── templates/
     ├── admin/
-    │   ├── forms-list.php       # Lista form + duplica
-    │   ├── form-builder.php     # Editor + anteprima + sicurezza
-    │   ├── settings.php         # Impostazioni globali
-    │   ├── submissions.php      # Risposte + elimina + dettaglio
-    │   └── submissions-list.php # Lista risposte per form
+    │   ├── forms-list.php
+    │   ├── form-builder.php
+    │   ├── settings.php
+    │   ├── submissions.php
+    │   └── submissions-list.php
     └── frontend/
-        └── form.php             # Rendering form + honeypot + GDPR
+        └── form.php
 ```
