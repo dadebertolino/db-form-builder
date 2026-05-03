@@ -2,7 +2,34 @@
 if (!defined('ABSPATH')) exit;
 
 class DBFB_Settings {
-    
+
+    /**
+     * Sanitize ip_storage_mode setting (2.3.0).
+     *
+     * Valori validi: 'none' | 'hashed' | 'full'. Qualsiasi altro valore
+     * restituisce 'hashed' (default sicuro).
+     */
+    public static function sanitize_ip_storage_mode($value) {
+        $value = is_string($value) ? strtolower(trim($value)) : '';
+        return in_array($value, array('none', 'hashed', 'full'), true) ? $value : 'hashed';
+    }
+
+    /**
+     * Sanitize submissions_retention_days setting (2.3.0).
+     *
+     * Range valido: 0 (illimitato) - 3650 (10 anni). Valori esterni
+     * vengono clampati. Stringhe / null / negativi → fallback a 365.
+     *
+     * Stesso pattern del consent_log_retention del Cookie Manager 3.0.0
+     * che usa range 0-3650.
+     */
+    public static function sanitize_retention_days($value) {
+        if (!is_numeric($value)) return 365;
+        $n = (int) $value;
+        if ($n < 0) return 365; // negativi sono errori utente, non scelta valida
+        return min(3650, $n);    // 0 ammesso (= illimitato)
+    }
+
     public static function render_page() {
         $global_settings = DB_Form_Builder::get_global_settings();
         include DBFB_PLUGIN_DIR . 'templates/admin/settings.php';
@@ -20,12 +47,46 @@ class DBFB_Settings {
             'recaptcha_secret_key' => sanitize_text_field($_POST['recaptcha_secret_key'] ?? ''),
             'from_email' => sanitize_email($_POST['from_email'] ?? ''),
             'from_name' => sanitize_text_field($_POST['from_name'] ?? ''),
+            // Privacy by design (2.3.0): modalità di salvataggio dell'IP del
+            // client nelle submission. Default 'hashed' per nuove installazioni.
+            'ip_storage_mode' => self::sanitize_ip_storage_mode($_POST['ip_storage_mode'] ?? 'hashed'),
+            // Retention (2.3.0): clamp 0-3650 (10 anni max). 0 = illimitata.
+            'submissions_retention_days' => self::sanitize_retention_days($_POST['submissions_retention_days'] ?? 365),
+            // Disinstallazione (2.3.1): opt-in per cancellazione totale dati.
+            'delete_data_on_uninstall' => !empty($_POST['delete_data_on_uninstall']),
         ];
         
         update_option('dbfb_global_settings', $settings);
         wp_send_json_success(['message' => 'Impostazioni salvate con successo!']);
     }
-    
+
+    /**
+     * AJAX: esegue manualmente la cleanup delle submission scadute (2.3.0).
+     *
+     * Esposto solo agli admin (manage_options). Non bypassa la retention
+     * configurata: rispetta lo stesso valore `submissions_retention_days`
+     * usato dal cron. Per cancellare TUTTE le submission, l'admin deve
+     * impostare retention = 1 e poi eseguire la pulizia (volutamente
+     * macchinoso, è una operazione distruttiva).
+     */
+    public static function ajax_cleanup_now() {
+        check_ajax_referer('dbfb_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Permessi insufficienti']);
+        }
+
+        $deleted = DB_Form_Builder::cleanup_expired_submissions();
+
+        wp_send_json_success([
+            'deleted' => (int) $deleted,
+            'message' => sprintf(
+                /* translators: %d: numero righe cancellate */
+                _n('%d submission cancellata.', '%d submission cancellate.', (int) $deleted, 'db-form-builder'),
+                (int) $deleted
+            ),
+        ]);
+    }
+
     public static function ajax_test_email() {
         check_ajax_referer('dbfb_nonce', 'nonce');
         if (!current_user_can('manage_options')) {

@@ -231,9 +231,15 @@
                 frame.open();
             });
             
-            // Toggle GDPR options
+            // Toggle GDPR options (2.10.0): mostra le opzioni GDPR quando attivo,
+            // oppure il blocco "consenso intenzionalmente disabilitato" quando spento.
             $('#dbfb-enable-gdpr').on('change', function() {
                 $('#dbfb-gdpr-options').toggle(this.checked);
+                $('#dbfb-gdpr-intentional-row').toggle(!this.checked);
+                if (this.checked) {
+                    // Quando l'utente attiva il consenso, il flag intentional perde senso.
+                    $('#dbfb-gdpr-intentional').prop('checked', false);
+                }
             });
             
             // Toggle Rate Limit options
@@ -244,6 +250,15 @@
             // Toggle Webhook options
             $('#dbfb-enable-webhook').on('change', function() {
                 $('#dbfb-webhook-options').toggle(this.checked);
+            });
+
+            // Generate webhook secret (2.7.0): genera 32 byte random in hex
+            // (64 caratteri). Usa crypto.getRandomValues per sicurezza.
+            $('#dbfb-generate-webhook-secret').on('click', function() {
+                const buf = new Uint8Array(32);
+                window.crypto.getRandomValues(buf);
+                const hex = Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
+                $('#dbfb-webhook-secret').val(hex).select();
             });
             
             // Anteprima
@@ -761,6 +776,7 @@
                 enable_gdpr: $('#dbfb-enable-gdpr').is(':checked'),
                 gdpr_text: $('#dbfb-gdpr-text').val(),
                 gdpr_link: $('#dbfb-gdpr-link').val(),
+                gdpr_intentionally_disabled: $('#dbfb-gdpr-intentional').is(':checked'),
                 rate_limit_enabled: $('#dbfb-rate-limit-enabled').is(':checked'),
                 rate_limit_max: $('#dbfb-rate-limit-max').val(),
                 rate_limit_window: $('#dbfb-rate-limit-window').val(),
@@ -772,7 +788,8 @@
                 admin_subject: $('#dbfb-admin-subject').val(),
                 admin_message: $('#dbfb-admin-message').val(),
                 enable_webhook: $('#dbfb-enable-webhook').is(':checked'),
-                webhook_url: $('#dbfb-webhook-url').val()
+                webhook_url: $('#dbfb-webhook-url').val(),
+                webhook_secret: $('#dbfb-webhook-secret').val()
             };
             
             const $btn = $('#dbfb-save-form');

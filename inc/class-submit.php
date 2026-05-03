@@ -46,10 +46,15 @@ class DBFB_Submit {
             $ip = DB_Form_Builder::get_client_ip();
             $max_submissions = intval($form_settings['rate_limit_max'] ?? 5);
             $window_minutes = intval($form_settings['rate_limit_window'] ?? 60);
-            
-            $transient_key = 'dbfb_rate_' . md5($ip . '_' . $form_id);
+
+            // Usiamo l'hash dell'IP come chiave del transient anche in
+            // modalità storage 'none' / 'hashed': il rate limit non ha
+            // bisogno dell'IP in chiaro, solo di una chiave deterministica
+            // per visitatore. Coerente col principio di minimizzazione GDPR.
+            $ip_key = $ip ? DB_Form_Builder::hash_ip($ip) : 'noip';
+            $transient_key = 'dbfb_rate_' . md5($ip_key . '_' . $form_id);
             $submissions_count = get_transient($transient_key);
-            
+
             if ($submissions_count !== false && $submissions_count >= $max_submissions) {
                 wp_send_json_error([
                     'message' => sprintf(
@@ -61,18 +66,61 @@ class DBFB_Submit {
             set_transient($transient_key, ($submissions_count ?: 0) + 1, $window_minutes * 60);
         }
         
-        // GDPR check
+        // GDPR check (2.3.0+) e cattura prova del consenso (2.11.0).
+        // Inizializziamo i campi consenso a NULL: significa "consenso non
+        // documentato" (es. form senza checkbox abilitata).
+        $gdpr_consent_given           = null;
+        $gdpr_consent_text            = null;
+        $gdpr_consent_timestamp       = null;
+        $gdpr_consent_privacy_url     = null;
+        $gdpr_consent_policy_version  = 0;
+
         if (!empty($form_settings['enable_gdpr'])) {
             if (empty($form_data['dbfb_gdpr_consent'])) {
                 wp_send_json_error([
                     'message' => __('Devi acconsentire al trattamento dei dati personali per procedere.', 'db-form-builder')
                 ]);
             }
+            // 2.11.0: prima di scartare il valore, salviamo la prova del consenso.
+            // GDPR art. 7.1 richiede di poter dimostrare il consenso ricevuto.
+            $gdpr_consent_given     = 1;
+            $gdpr_consent_text      = isset($form_settings['gdpr_text']) ? (string) $form_settings['gdpr_text'] : '';
+            $gdpr_consent_timestamp = current_time('mysql');
+
+            // URL informativa privacy: prima il link specifico del form,
+            // fallback alla privacy policy globale di WP.
+            $form_privacy_url = isset($form_settings['gdpr_link']) ? trim((string) $form_settings['gdpr_link']) : '';
+            if ($form_privacy_url === '' && function_exists('get_privacy_policy_url')) {
+                $form_privacy_url = (string) get_privacy_policy_url();
+            }
+            $gdpr_consent_privacy_url = $form_privacy_url ?: null;
+
+            // Linka alla versione esatta del documento Privacy Hub se disponibile.
+            if (class_exists('DBPH_Policy_Archive') && method_exists('DBPH_Policy_Archive', 'get_current_version_id')) {
+                $gdpr_consent_policy_version = (int) DBPH_Policy_Archive::get_current_version_id();
+            }
+
             unset($form_data['dbfb_gdpr_consent']);
+        } elseif (!empty($form_settings['gdpr_intentionally_disabled'])) {
+            // Form intenzionalmente senza checkbox: documentiamo che la mancanza
+            // di consenso esplicito è una scelta consapevole dell'amministratore.
+            $gdpr_consent_given = 0;
+            $gdpr_consent_text  = __('Form configurato senza checkbox di consenso (scelta consapevole dell\'amministratore: base giuridica diversa dal consenso).', 'db-form-builder');
+            $gdpr_consent_timestamp = current_time('mysql');
         }
+        // Else: né enable_gdpr né intentional → tutti i campi NULL =
+        // "consenso non documentato (potenzialmente non conforme)".
         
-        // reCAPTCHA
-        if (!empty($form_settings['enable_captcha']) && !empty($global_settings['recaptcha_secret_key'])) {
+        // reCAPTCHA — verifichiamo SOLO se il consent gate (2.3.0) ha
+        // permesso di caricare lo script lato frontend. Se il gate ha
+        // bloccato il caricamento, il client non avrà mai ricevuto il widget
+        // né potuto produrre un token: pretenderlo qui bloccherebbe
+        // utenti legittimi senza colpa.
+        //
+        // Le difese di base (honeypot + rate limit) restano sempre attive
+        // sopra, quindi il form è comunque protetto da bot rudimentali
+        // anche senza reCAPTCHA.
+        if (DB_Form_Builder::should_load_recaptcha($form_settings)) {
             if (!self::verify_recaptcha($recaptcha_token, $global_settings['recaptcha_secret_key'])) {
                 wp_send_json_error(['message' => __('Verifica anti-spam fallita. Riprova.', 'db-form-builder')]);
             }
@@ -128,14 +176,58 @@ class DBFB_Submit {
         global $wpdb;
         $table = $wpdb->prefix . 'dbfb_submissions';
         DB_Form_Builder::maybe_create_table();
-        
+        DB_Form_Builder::maybe_upgrade_schema();
+
+        // Privacy by design (2.3.0): l'IP viene salvato secondo la modalità
+        // configurata. Default 'hashed': SHA-256 + salt, irreversibile.
+        // Le nuove submission lasciano sempre vuota la colonna ip_address
+        // legacy; la colonna ip_hash è il riferimento autorevole.
+        $client_ip = DB_Form_Builder::get_client_ip();
+        $mode = DB_Form_Builder::get_ip_storage_mode();
+        $ip_address_value = '';
+        $ip_hash_value = '';
+        if ($mode === 'full') {
+            $ip_address_value = $client_ip;
+        } elseif ($mode === 'hashed') {
+            $ip_hash_value = DB_Form_Builder::hash_ip($client_ip);
+        }
+        // mode === 'none' → entrambi vuoti.
+
+        // Snapshot dei field (2.6.0): salviamo la definizione dei campi
+        // (id/type/label) insieme alla submission. Permette di rendere le
+        // submission storiche correttamente anche dopo che il form è stato
+        // modificato (rinomina label, aggiunta/rimozione campi, ecc.).
+        // Salviamo una chiave riservata `_fields_snapshot` nel JSON `data`
+        // — niente nuova colonna SQL, schema invariato.
+        // Solo i campi NON layout-only (escludiamo divider/html/image/pagebreak)
+        // perché non hanno valori associati.
+        $snapshot = array();
+        foreach ($form_fields as $field) {
+            if (in_array($field['type'] ?? '', array('divider', 'html', 'image', 'pagebreak'), true)) continue;
+            $snapshot[] = array(
+                'id'    => $field['id']    ?? '',
+                'type'  => $field['type']  ?? '',
+                'label' => $field['label'] ?? '',
+            );
+        }
+        $form_data['_fields_snapshot'] = $snapshot;
+
         $result = $wpdb->insert($table, [
             'form_id' => $form_id,
             'data' => json_encode($form_data),
-            'ip_address' => DB_Form_Builder::get_client_ip(),
+            'ip_address' => $ip_address_value,
+            'ip_hash' => $ip_hash_value,
+            'gdpr_consent_given'          => $gdpr_consent_given,
+            'gdpr_consent_text'           => $gdpr_consent_text,
+            'gdpr_consent_timestamp'      => $gdpr_consent_timestamp,
+            'gdpr_consent_privacy_url'    => $gdpr_consent_privacy_url,
+            'gdpr_consent_policy_version' => $gdpr_consent_policy_version,
         ]);
-        
-        if ($result === false) {
+
+        if ($result === false && defined('WP_DEBUG') && WP_DEBUG) {
+            // Loghiamo solo in debug per evitare di sporcare i log di
+            // produzione. Il chiamante riceve comunque il success message,
+            // ma chi sviluppa vede l'errore.
             error_log('DB Form Builder: Errore inserimento DB - ' . $wpdb->last_error);
         }
         
@@ -159,8 +251,20 @@ class DBFB_Submit {
         }
         
         // Webhook
+        // Webhook delivery (2.7.0): enqueue async invece dell'invio sincrono.
+        // L'enqueue salva in tabella delle deliveries e schedula un dispatch
+        // asincrono via WP-Cron. Vantaggi: il submit non aspetta la risposta
+        // del destinatario, retry automatico su fallimento, dead-letter queue
+        // visibile in admin.
         if (!empty($form_settings['enable_webhook']) && !empty($form_settings['webhook_url'])) {
-            self::fire_webhook($form_settings['webhook_url'], $form, $form_fields, $form_data);
+            $submission_id = (int) $wpdb->insert_id;
+            $payload = DBFB_Webhook::build_payload($form, $form_fields, $form_data, $client_ip);
+            DBFB_Webhook::enqueue(
+                $form_id,
+                $submission_id,
+                $form_settings['webhook_url'],
+                $payload
+            );
         }
         
         wp_send_json_success([
@@ -168,46 +272,15 @@ class DBFB_Submit {
         ]);
     }
     
+    /**
+     * @deprecated 2.7.0 Usare DBFB_Webhook::enqueue() per l'invio async.
+     * Mantenuto come shim per backward compat se altro codice (custom plugin
+     * o legacy) lo richiama. Esegue l'enqueue invece dell'invio sincrono.
+     */
     private static function fire_webhook($url, $form, $form_fields, $form_data) {
-        // Build structured payload
-        $fields_data = [];
-        foreach ($form_fields as $field) {
-            if (in_array($field['type'], ['divider', 'html', 'image', 'pagebreak'])) continue;
-            $value = $form_data[$field['id']] ?? '';
-            $fields_data[] = [
-                'id' => $field['id'],
-                'label' => $field['label'],
-                'type' => $field['type'],
-                'value' => $value,
-            ];
-        }
-        
-        $payload = [
-            'form_id' => $form->ID,
-            'form_title' => $form->post_title,
-            'submitted_at' => current_time('c'),
-            'ip' => DB_Form_Builder::get_client_ip(),
-            'fields' => $fields_data,
-            'raw_data' => $form_data,
-        ];
-        
-        $response = wp_remote_post($url, [
-            'timeout' => 15,
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'User-Agent' => 'DB-Form-Builder/' . DBFB_VERSION,
-            ],
-            'body' => json_encode($payload),
-        ]);
-        
-        if (is_wp_error($response)) {
-            error_log('DB Form Builder Webhook error: ' . $response->get_error_message() . ' — URL: ' . $url);
-        } else {
-            $code = wp_remote_retrieve_response_code($response);
-            if ($code < 200 || $code >= 300) {
-                error_log('DB Form Builder Webhook HTTP ' . $code . ' — URL: ' . $url);
-            }
-        }
+        $client_ip = DB_Form_Builder::get_client_ip();
+        $payload = DBFB_Webhook::build_payload($form, $form_fields, $form_data, $client_ip);
+        DBFB_Webhook::enqueue($form->ID, null, $url, $payload);
     }
     
     private static function verify_recaptcha($token, $secret_key) {
@@ -347,6 +420,12 @@ class DBFB_Submit {
                     'url' => $upload_dir['url'] . '/' . $safe_name,
                     'name' => sanitize_file_name($names[$i]),
                     'size' => $sizes[$i],
+                    // 2.4.0: path relativo a uploads basedir, salvato per
+                    // permettere la cancellazione affidabile del file fisico
+                    // quando la submission viene eliminata. Salviamo il path
+                    // relativo (non assoluto) così il sito è portabile fra
+                    // ambienti (locale → staging → production senza patch).
+                    'path' => $upload_dir['relative_path'] . '/' . $safe_name,
                 ];
             }
             
@@ -381,6 +460,15 @@ class DBFB_Submit {
             }
         }
         
-        return ['path' => $base_dir, 'url' => $base_url];
+        return [
+            'path'          => $base_dir,
+            'url'           => $base_url,
+            // 2.4.0: path relativo a wp_upload_dir basedir (es. "dbfb/123").
+            // Usato per costruire 'path' nelle entry delle submission senza
+            // hardcoding del basedir assoluto, che cambia da ambiente ad
+            // ambiente. Sicuro perché parte solo da nostre concatenazioni
+            // ('dbfb/' . $form_id).
+            'relative_path' => 'dbfb/' . $form_id,
+        ];
     }
 }

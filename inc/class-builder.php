@@ -23,9 +23,17 @@ class DBFB_Builder {
             'success_message' => __('Grazie! Il modulo è stato inviato con successo.', 'db-form-builder'),
             'enable_captcha' => false,
             'enable_honeypot' => true,
-            'enable_gdpr' => false,
+            // 2.10.0: il consenso al trattamento dati è ora ON di default per i nuovi form.
+            // I form esistenti mantengono il loro setting salvato — il default si applica
+            // solo quando il valore non è ancora stato salvato (form mai aperti in editor).
+            'enable_gdpr' => true,
             'gdpr_text' => __('Acconsento al trattamento dei dati personali secondo la Privacy Policy', 'db-form-builder'),
             'gdpr_link' => '',
+            // 2.10.0: marker che indica scelta consapevole dell'admin di disabilitare il consenso
+            // GDPR. Quando true, il form esce dall'admin notice "form senza consenso GDPR" che
+            // monitora la conformità di default. Casi legittimi: form interno autenticato, form
+            // con base giuridica diversa dal consenso (contratto, legittimo interesse).
+            'gdpr_intentionally_disabled' => false,
             'rate_limit_enabled' => false,
             'rate_limit_max' => 5,
             'rate_limit_window' => 60,
@@ -38,6 +46,9 @@ class DBFB_Builder {
             'admin_message' => __("È stata ricevuta una nuova richiesta dal form {form_titolo}.\n\nDati inviati:\n{riepilogo_dati}\n\nIP: {ip}\nData: {data}", 'db-form-builder'),
             'enable_webhook' => false,
             'webhook_url' => '',
+            // 2.7.0: secret HMAC opzionale. Se valorizzato, ogni delivery
+            // viene firmata con HMAC-SHA256(secret, "{timestamp}.{body}").
+            'webhook_secret' => '',
         ];
         
         $form_settings = wp_parse_args($form_settings, $default_settings);
@@ -141,6 +152,7 @@ class DBFB_Builder {
             'enable_gdpr' => !empty($settings['enable_gdpr']),
             'gdpr_text' => wp_kses_post($settings['gdpr_text'] ?? ''),
             'gdpr_link' => esc_url_raw($settings['gdpr_link'] ?? ''),
+            'gdpr_intentionally_disabled' => !empty($settings['gdpr_intentionally_disabled']),
             'rate_limit_enabled' => !empty($settings['rate_limit_enabled']),
             'rate_limit_max' => intval($settings['rate_limit_max'] ?? 5),
             'rate_limit_window' => intval($settings['rate_limit_window'] ?? 60),
@@ -153,7 +165,25 @@ class DBFB_Builder {
             'admin_message' => wp_kses_post($settings['admin_message'] ?? ''),
             'enable_webhook' => !empty($settings['enable_webhook']),
             'webhook_url' => esc_url_raw($settings['webhook_url'] ?? ''),
+            // 2.7.0: secret HMAC. Sanitize: solo caratteri sicuri, max 128 char.
+            // Non escape_html: deve restare letterale per il calcolo HMAC.
+            'webhook_secret' => self::sanitize_webhook_secret($settings['webhook_secret'] ?? ''),
         ];
+    }
+
+    /**
+     * Sanitize del secret HMAC (2.7.0).
+     *
+     * Accetta caratteri tipici dei secret crypto-safe: hex, base64, alfanumerico
+     * + alcuni separatori. Trim. Limita a 128 char per coerenza con la colonna
+     * VARCHAR del campo di storage. Stringa vuota = HMAC disabilitato.
+     */
+    private static function sanitize_webhook_secret($s) {
+        $s = is_string($s) ? trim($s) : '';
+        // Permetti solo caratteri stampabili ASCII non-spazio (esclude controlli
+        // e accenti). I generatori HMAC tipici producono hex/base64/alfanumerico.
+        $s = preg_replace('/[^\x21-\x7E]/', '', $s);
+        return mb_substr($s, 0, 128);
     }
     
     // =========================================================

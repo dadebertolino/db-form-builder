@@ -197,9 +197,33 @@
                             <input type="text" id="dbfb-gdpr-text" value="<?php echo esc_attr($form_settings['gdpr_text']); ?>" style="width:100%; max-width:500px;">
                         </div>
                         <div>
-                            <label for="dbfb-gdpr-link"><?php _e('Link alla Privacy Policy (opzionale)', 'db-form-builder'); ?></label>
-                            <input type="url" id="dbfb-gdpr-link" value="<?php echo esc_attr($form_settings['gdpr_link']); ?>" placeholder="https://..." style="width:100%; max-width:500px;">
+                            <label for="dbfb-gdpr-link"><?php _e('Link all\'informativa privacy', 'db-form-builder'); ?></label>
+                            <input type="url" id="dbfb-gdpr-link" value="<?php echo esc_attr($form_settings['gdpr_link'] ?? ''); ?>" placeholder="https://..." style="width:100%; max-width:500px;">
+                            <p class="description" style="margin-top:4px">
+                                <?php
+                                $wp_privacy_url = function_exists('get_privacy_policy_url') ? get_privacy_policy_url() : '';
+                                if (!empty($wp_privacy_url)) {
+                                    printf(
+                                        /* translators: %s: URL della privacy policy globale di WP */
+                                        esc_html__('Lascia vuoto per usare l\'informativa globale di WordPress (%s). Compila per puntare a un\'informativa specifica del form (es. modulo candidature, modulo iscrizione newsletter).', 'db-form-builder'),
+                                        '<a href="' . esc_url($wp_privacy_url) . '" target="_blank">' . esc_html($wp_privacy_url) . '</a>'
+                                    );
+                                } else {
+                                    esc_html_e('Compila per linkare l\'informativa privacy specifica del form. Se vuoto e non hai impostato la pagina Privacy in Impostazioni → Privacy di WordPress, il link non viene mostrato.', 'db-form-builder');
+                                }
+                                ?>
+                            </p>
                         </div>
+                    </div>
+
+                    <div class="dbfb-settings-row" id="dbfb-gdpr-intentional-row" style="<?php echo !empty($form_settings['enable_gdpr']) ? 'display:none;' : ''; ?> margin-left: 25px; padding: 10px 12px; background: #fff8e1; border-left: 3px solid #f0b849; border-radius: 3px;">
+                        <label>
+                            <input type="checkbox" id="dbfb-gdpr-intentional" <?php checked(!empty($form_settings['gdpr_intentionally_disabled'])); ?>>
+                            <strong><?php _e('Confermo: questo form non richiede il consenso GDPR (scelta consapevole)', 'db-form-builder'); ?></strong>
+                        </label>
+                        <p class="description" style="margin: 6px 0 0 25px">
+                            <?php _e('Spunta solo se sei certo che il form opera su una base giuridica diversa dal consenso (es. esecuzione di un contratto, legittimo interesse, autenticazione utente preesistente). Quando spuntato, il form non comparirà nell\'avviso "Form senza consenso GDPR" del pannello amministrativo.', 'db-form-builder'); ?>
+                        </p>
                     </div>
                     
                     <div class="dbfb-settings-row">
@@ -313,12 +337,46 @@
                             <?php _e('Invia dati a URL esterno dopo ogni invio', 'db-form-builder'); ?>
                         </label>
                     </div>
-                    
+
                     <div class="dbfb-settings-row" id="dbfb-webhook-options" style="<?php echo empty($form_settings['enable_webhook']) ? 'display:none;' : ''; ?>">
                         <label for="dbfb-webhook-url"><?php _e('URL Webhook', 'db-form-builder'); ?></label>
-                        <input type="url" id="dbfb-webhook-url" value="<?php echo esc_attr($form_settings['webhook_url']); ?>" placeholder="https://esempio.com/webhook">
+                        <input type="url" id="dbfb-webhook-url" value="<?php echo esc_attr($form_settings['webhook_url'] ?? ''); ?>" placeholder="https://esempio.com/webhook">
                         <p class="description">
                             <?php _e('Riceverà un POST JSON con: form_id, form_title, submitted_at, ip, fields (array con id, label, type, value) e raw_data. Compatibile con Zapier, Make, n8n, endpoint custom.', 'db-form-builder'); ?>
+                        </p>
+
+                        <p class="description" style="margin-top:14px;padding:8px 12px;background:#f0f6fc;border-left:3px solid #0073aa">
+                            <strong><?php _e('Affidabilità (2.7.0+):', 'db-form-builder'); ?></strong>
+                            <?php _e('Le deliveries vengono inviate in modo asincrono. In caso di errore transient (timeout, 5xx, 429) il sistema ritenta automaticamente fino a 5 volte con backoff esponenziale (1m, 5m, 30m, 2h, 12h). Errori 4xx permanenti vengono marcati come <em>failed</em>. Esauriti i tentativi → <em>dead</em>.', 'db-form-builder'); ?>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=dbfb-webhook-deliveries')); ?>" target="_blank">
+                                <?php _e('Vedi Webhook Deliveries →', 'db-form-builder'); ?>
+                            </a>
+                        </p>
+
+                        <label for="dbfb-webhook-secret" style="margin-top:14px;display:block">
+                            <?php _e('Secret HMAC (opzionale)', 'db-form-builder'); ?>
+                        </label>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="text" id="dbfb-webhook-secret"
+                                   value="<?php echo esc_attr($form_settings['webhook_secret'] ?? ''); ?>"
+                                   placeholder="<?php esc_attr_e('Lascia vuoto per disabilitare la firma', 'db-form-builder'); ?>"
+                                   style="flex:1;font-family:monospace;font-size:11px">
+                            <button type="button" id="dbfb-generate-webhook-secret" class="button">
+                                <?php _e('🎲 Genera', 'db-form-builder'); ?>
+                            </button>
+                        </div>
+                        <p class="description">
+                            <?php _e('Se valorizzato, ogni payload viene firmato con HMAC-SHA256. Il destinatario riceve gli header:', 'db-form-builder'); ?>
+                        </p>
+                        <pre style="background:#f5f5f5;padding:8px;font-size:11px;border:1px solid #ddd;margin:6px 0">X-DBFB-Timestamp: 1730548200
+X-DBFB-Signature: sha256=&lt;hex&gt;
+X-DBFB-Delivery-Id: 42
+X-DBFB-Attempt: 1</pre>
+                        <p class="description">
+                            <?php _e('Per verificare la firma sul destinatario:', 'db-form-builder'); ?>
+                            <code>signed = timestamp + "." + body</code>;
+                            <code>expected = hmac_sha256(secret, signed)</code>;
+                            <?php _e('confrontare con la parte dopo <code>sha256=</code> dell\'header X-DBFB-Signature usando un confronto in tempo costante.', 'db-form-builder'); ?>
                         </p>
                     </div>
                 </div>

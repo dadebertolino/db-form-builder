@@ -4,11 +4,34 @@ if (!defined('ABSPATH')) exit;
 class DBFB_Email {
     
     public static function prepare_placeholders($form, $fields, $data, $settings) {
+        // Privacy by design (2.3.0): il placeholder {ip} nelle email rispetta
+        // la modalità di storage configurata. In 'none' è vuoto, in 'hashed'
+        // è l'hash, in 'full' è l'IP in chiaro. Coerente con quanto salvato
+        // a DB.
+        $client_ip = DB_Form_Builder::get_client_ip();
+        $mode = DB_Form_Builder::get_ip_storage_mode();
+        $ip_for_email = '';
+        if ($mode === 'full') {
+            $ip_for_email = $client_ip;
+        } elseif ($mode === 'hashed') {
+            $ip_for_email = DB_Form_Builder::hash_ip($client_ip);
+        }
+
+        // 2.8.0: placeholder {privacy_url} per email - URL dell'informativa
+        // privacy specifica del form (con fallback a quella globale di WP).
+        // Utile per email di conferma utente: "I tuoi dati sono trattati
+        // come da informativa: {privacy_url}".
+        $privacy_url = $settings['gdpr_link'] ?? '';
+        if ($privacy_url === '' && function_exists('get_privacy_policy_url')) {
+            $privacy_url = get_privacy_policy_url();
+        }
+
         $placeholders = [
             '{form_titolo}' => $form->post_title,
-            '{ip}' => DB_Form_Builder::get_client_ip(),
+            '{ip}' => $ip_for_email,
             '{data}' => current_time('d/m/Y H:i:s'),
             '{sito}' => get_bloginfo('name'),
+            '{privacy_url}' => $privacy_url,
         ];
         
         $riepilogo = '';

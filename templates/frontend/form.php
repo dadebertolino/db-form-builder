@@ -2,6 +2,11 @@
 
 $global_settings = DB_Form_Builder::get_global_settings();
 $enable_captcha = !empty($form_settings['enable_captcha']) && !empty($global_settings['recaptcha_site_key']);
+// Consent gate (2.3.0): controlla se possiamo realmente caricare lo script
+// reCAPTCHA. Se enable_captcha è true ma captcha_loaded è false, mostriamo
+// un placeholder al posto del widget — il submit-side ha rate limit + honeypot
+// come difese di base che restano sempre attive.
+$captcha_loaded = $enable_captcha && DB_Form_Builder::should_load_recaptcha($form_settings);
 $recaptcha_version = $global_settings['recaptcha_version'] ?? 'v2';
 $enable_honeypot = !empty($form_settings['enable_honeypot']);
 $enable_gdpr = !empty($form_settings['enable_gdpr']);
@@ -15,7 +20,7 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
 
 <form class="dbfb-form" 
       data-form-id="<?php echo esc_attr($form_id); ?>" 
-      <?php if ($enable_captcha && $recaptcha_version === 'v3'): ?>data-recaptcha-v3="1"<?php endif; ?>
+      <?php if ($captcha_loaded && $recaptcha_version === 'v3'): ?>data-recaptcha-v3="1"<?php endif; ?>
       <?php if ($has_file_fields): ?>enctype="multipart/form-data"<?php endif; ?>
       role="form"
       aria-label="<?php echo esc_attr($form_title); ?>"
@@ -257,10 +262,63 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
     </div>
     <?php endif; ?>
     
-    <?php if ($enable_captcha && $recaptcha_version === 'v2'): ?>
+    <?php if ($enable_captcha && $captcha_loaded && $recaptcha_version === 'v2'): ?>
     <div class="dbfb-form-group dbfb-recaptcha-container">
         <div class="g-recaptcha" data-sitekey="<?php echo esc_attr($global_settings['recaptcha_site_key']); ?>"></div>
     </div>
+    <?php elseif ($enable_captcha && !$captcha_loaded): ?>
+    <?php
+    // Placeholder mostrato quando reCAPTCHA è configurato ma il consent
+    // gate ha bloccato il caricamento (es. utente non ha accettato cookie
+    // marketing). Il submit-side resta protetto da rate limit + honeypot
+    // (sempre attivi) ma comunichiamo all'utente perché manca il widget.
+    $reopen_handler = class_exists('DBCM_Consent_API')
+        ? 'window.DBCM && window.DBCM.openPreferences && window.DBCM.openPreferences(); return false;'
+        : '';
+    ?>
+    <div class="dbfb-form-group dbfb-recaptcha-placeholder"
+         role="region"
+         aria-label="<?php esc_attr_e('Antispam non attivo', 'db-form-builder'); ?>"
+         style="padding:12px 16px;background:#f5f5f5;border:1px dashed #bbb;border-radius:4px;font-size:0.9em">
+        <span aria-hidden="true">🔒</span>
+        <strong><?php esc_html_e('Antispam reCAPTCHA non attivo', 'db-form-builder'); ?></strong>
+        <p style="margin:6px 0 0">
+            <?php
+            if ($reopen_handler) {
+                printf(
+                    /* translators: %s: link "modifica preferenze" */
+                    esc_html__('Per attivare la protezione antispam Google reCAPTCHA, %s e accetta i cookie di marketing.', 'db-form-builder'),
+                    '<a href="#" onclick="' . esc_attr($reopen_handler) . '">' . esc_html__('modifica le tue preferenze cookie', 'db-form-builder') . '</a>'
+                );
+            } else {
+                esc_html_e('Per attivare la protezione antispam Google reCAPTCHA è necessario accettare i cookie di marketing.', 'db-form-builder');
+            }
+            ?>
+        </p>
+    </div>
+    <?php
+    // Se il Cookie Manager è attivo, ascoltiamo l'evento dbcm:consent per
+    // ricaricare la pagina quando l'utente accetta marketing — così il
+    // placeholder sparisce e il widget reCAPTCHA viene caricato. Il reload
+    // è coerente col modello server-rendered (vedi consent-listener.js del
+    // SEO Manager 1.2.0). Lo emettiamo una sola volta per pagina anche se
+    // ci sono più form: usiamo una flag globale.
+    if (class_exists('DBCM_Consent_API')) :
+    ?>
+    <script>
+    (function() {
+        if (window.__dbfb_consent_reload_listener) return;
+        window.__dbfb_consent_reload_listener = true;
+        document.addEventListener('dbcm:consent', function(ev) {
+            var consent = (ev && ev.detail && ev.detail.consent) || {};
+            // Se è arrivato consenso marketing, ricarichiamo per caricare reCAPTCHA.
+            if (consent.marketing === true) {
+                window.location.reload();
+            }
+        });
+    })();
+    </script>
+    <?php endif; ?>
     <?php endif; ?>
     
     <?php if ($enable_gdpr): ?>
@@ -275,13 +333,20 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
                    aria-invalid="false"
                    aria-describedby="dbfb-gdpr-error-<?php echo $form_id; ?>">
             <label for="dbfb-gdpr-<?php echo $form_id; ?>">
-                <?php 
+                <?php
                 $gdpr_text = $form_settings['gdpr_text'] ?? __('Acconsento al trattamento dei dati personali', 'db-form-builder');
+                // 2.7.0: se gdpr_link è vuoto, fallback all'URL privacy
+                // policy globale di WordPress (Impostazioni → Privacy).
+                // Così il sito eredita automaticamente l'informativa globale
+                // senza dover ripetere l'URL su ogni form.
                 $gdpr_link = $form_settings['gdpr_link'] ?? '';
+                if ($gdpr_link === '' && function_exists('get_privacy_policy_url')) {
+                    $gdpr_link = get_privacy_policy_url();
+                }
                 echo esc_html($gdpr_text);
                 if ($gdpr_link): ?>
                     <a href="<?php echo esc_url($gdpr_link); ?>" target="_blank" rel="noopener">
-                        <?php _e('Leggi la Privacy Policy', 'db-form-builder'); ?>
+                        <?php _e('Leggi l\'informativa privacy', 'db-form-builder'); ?>
                         <span class="screen-reader-text"><?php _e('(si apre in una nuova finestra)', 'db-form-builder'); ?></span>
                     </a>
                 <?php endif; ?>
@@ -301,7 +366,7 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
         </button>
     </div>
     
-    <?php if ($enable_captcha): ?>
+    <?php if ($captcha_loaded): ?>
     <div class="dbfb-recaptcha-notice">
         <small>
             <?php _e('Questo sito è protetto da reCAPTCHA e si applicano la', 'db-form-builder'); ?>
