@@ -19,6 +19,8 @@ class DB_Form_Builder {
         add_action('admin_init', [__CLASS__, 'maybe_upgrade_schema']);
         add_action('admin_init', [__CLASS__, 'schedule_cleanup_cron']);
         add_action('admin_menu', [$this, 'admin_menu']);
+        add_action('admin_notices', [__CLASS__, 'maybe_warn_nginx_uploads']);
+        add_action('admin_init', [__CLASS__, 'handle_nginx_notice_dismiss']);
         add_action('admin_enqueue_scripts', [$this, 'admin_scripts']);
         add_action('wp_enqueue_scripts', [$this, 'frontend_scripts']);
         add_shortcode('dbfb_form', [$this, 'render_form_shortcode']);
@@ -434,6 +436,49 @@ class DB_Form_Builder {
     // ADMIN MENU
     // =========================================================
     
+    /**
+     * Admin notice (solo pagine del plugin) per server non-Apache (2.11.1).
+     *
+     * La cartella upload/dbfb/ è protetta da un .htaccess che nega
+     * l'esecuzione di contenuti attivi, ma Nginx ignora .htaccess. La
+     * difesa primaria resta la validazione MIME lato PHP; questo avviso
+     * ricorda all'admin di aggiungere la regola equivalente nella config
+     * del server. Dismissibile per-utente.
+     */
+    public static function maybe_warn_nginx_uploads() {
+        if (!current_user_can('manage_options')) return;
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen || strpos($screen->id, 'dbfb') === false) return;
+
+        if (get_user_meta(get_current_user_id(), 'dbfb_dismissed_nginx_notice', true)) return;
+
+        $server = isset($_SERVER['SERVER_SOFTWARE']) ? $_SERVER['SERVER_SOFTWARE'] : '';
+        $is_apache = (stripos($server, 'apache') !== false || stripos($server, 'litespeed') !== false);
+        if ($is_apache || $server === '') return;
+
+        $dismiss_url = wp_nonce_url(
+            add_query_arg('dbfb_dismiss_nginx', '1'),
+            'dbfb_dismiss_nginx'
+        );
+
+        echo '<div class="notice notice-warning is-dismissible"><p><strong>'
+            . esc_html__('DB Form Builder — protezione upload su Nginx', 'db-form-builder')
+            . '</strong><br>'
+            . esc_html__('Gli allegati dei form sono in una cartella protetta da .htaccess, ignorato da Nginx. Il contenuto dei file è comunque validato lato server, ma per una difesa esplicita aggiungi alla config del sito:', 'db-form-builder')
+            . '</p><p><code style="display:block;padding:8px;user-select:all;">location ~* /uploads/dbfb/.*\.(php|phtml|phar|cgi|pl|py|sh|svg|html?)$ { deny all; }</code></p>'
+            . '<p><a href="' . esc_url($dismiss_url) . '" class="button button-secondary">' . esc_html__('Ho capito, non mostrare più', 'db-form-builder') . '</a></p></div>';
+    }
+
+    /**
+     * Gestisce il dismiss dell'avviso Nginx (2.11.1).
+     */
+    public static function handle_nginx_notice_dismiss() {
+        if (!isset($_GET['dbfb_dismiss_nginx'])) return;
+        if (!current_user_can('manage_options')) return;
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'dbfb_dismiss_nginx')) return;
+        update_user_meta(get_current_user_id(), 'dbfb_dismissed_nginx_notice', 1);
+    }
+
     public function admin_menu() {
         add_menu_page(
             __('Form Builder', 'db-form-builder'),

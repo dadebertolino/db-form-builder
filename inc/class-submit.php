@@ -529,12 +529,34 @@ class DBFB_Submit {
                     ));
                 }
                 
-                // WordPress filetype check
-                $check = wp_check_filetype(sanitize_file_name($names[$i]));
-                if (empty($check['type'])) {
+                $safe_filename = sanitize_file_name($names[$i]);
+
+                // Validazione MIME reale del CONTENUTO (2.11.1): wp_check_filetype
+                // guarda solo l'estensione nel nome. wp_check_filetype_and_ext
+                // legge i magic bytes del file caricato (via finfo) e verifica
+                // che il MIME reale corrisponda all'estensione dichiarata. Blocca
+                // i file camuffati (es. uno script rinominato .pdf) e i mismatch
+                // (contenuto che non combacia con l'estensione).
+                $filetype = wp_check_filetype_and_ext($tmp_names[$i], $safe_filename);
+                if (empty($filetype['type'])) {
                     return new WP_Error('invalid_filetype', sprintf(
-                        __('Il file "%s" non è un tipo riconosciuto', 'db-form-builder'),
-                        sanitize_file_name($names[$i])
+                        __('Il file "%s" non è un tipo riconosciuto o il contenuto non corrisponde all\'estensione', 'db-form-builder'),
+                        $safe_filename
+                    ));
+                }
+                // Se WordPress ha corretto l'estensione (proper_filename), il
+                // nome dichiarato non combaciava col contenuto reale: rifiuta.
+                if (!empty($filetype['proper_filename'])) {
+                    return new WP_Error('filetype_mismatch', sprintf(
+                        __('Il contenuto del file "%s" non corrisponde alla sua estensione', 'db-form-builder'),
+                        $safe_filename
+                    ));
+                }
+                // Difesa aggiuntiva: il MIME reale non deve mai essere eseguibile.
+                if (preg_match('#(application/x-php|text/x-php|application/x-httpd-php|application/x-executable|text/x-shellscript)#i', $filetype['type'])) {
+                    return new WP_Error('blocked_mime', sprintf(
+                        __('Il tipo di contenuto del file "%s" non è consentito per motivi di sicurezza', 'db-form-builder'),
+                        $safe_filename
                     ));
                 }
                 
@@ -582,25 +604,24 @@ class DBFB_Submit {
         $wp_upload = wp_upload_dir();
         $base_dir = $wp_upload['basedir'] . '/dbfb/' . $form_id;
         $base_url = $wp_upload['baseurl'] . '/dbfb/' . $form_id;
-        
+
         if (!file_exists($base_dir)) {
             if (!wp_mkdir_p($base_dir)) {
                 return new WP_Error('mkdir_failed', __('Impossibile creare la cartella di upload', 'db-form-builder'));
             }
-            
-            // Security: prevent PHP execution in upload dir
-            $htaccess = $wp_upload['basedir'] . '/dbfb/.htaccess';
-            if (!file_exists($htaccess)) {
-                @file_put_contents($htaccess, "# DB Form Builder - Security\n<FilesMatch \"\\.(php|phtml|php3|php4|php5|phar|cgi|pl|py|sh|bat)$\">\n    Deny from all\n</FilesMatch>\nOptions -ExecCGI\n");
-            }
-            
-            // Empty index.php to prevent directory listing
-            $index = $base_dir . '/index.php';
-            if (!file_exists($index)) {
-                @file_put_contents($index, '<?php // Silence is golden.');
-            }
         }
-        
+
+        // Protezione della root dbfb/ (idempotente: la riscriviamo se manca,
+        // anche su installazioni che avevano già la cartella da versioni
+        // precedenti con un .htaccess meno restrittivo).
+        self::harden_upload_root($wp_upload['basedir'] . '/dbfb');
+
+        // index.php nella sottocartella del form per prevenire il listing.
+        $index = $base_dir . '/index.php';
+        if (!file_exists($index)) {
+            @file_put_contents($index, '<?php // Silence is golden.');
+        }
+
         return [
             'path'          => $base_dir,
             'url'           => $base_url,
@@ -611,5 +632,40 @@ class DBFB_Submit {
             // ('dbfb/' . $form_id).
             'relative_path' => 'dbfb/' . $form_id,
         ];
+    }
+
+    /**
+     * Scrive/aggiorna i file di protezione nella root uploads/dbfb/ (2.11.1).
+     *
+     * .htaccess: nega esecuzione e download di qualsiasi contenuto attivo o
+     * ambiguo (script, .svg — vettore XSS, .html/.htm). Copre Apache e
+     * LiteSpeed. Su Nginx l'.htaccess è ignorato: la protezione reale lì è
+     * la validazione MIME lato PHP (process_file_uploads) più la config del
+     * server; l'admin viene avvisato via dbfb_maybe_warn_nginx_uploads.
+     *
+     * Idempotente: riscrive solo se il file manca o è la versione vecchia,
+     * così le installazioni pre-2.11.1 ricevono la regola rafforzata.
+     */
+    private static function harden_upload_root($dbfb_root) {
+        if (!is_dir($dbfb_root)) return;
+
+        $htaccess = $dbfb_root . '/.htaccess';
+        $desired  = "# DB Form Builder - Security (2.11.1)\n"
+                  . "<FilesMatch \"\\.(php|phtml|php[0-9]|phps|phar|cgi|pl|py|sh|bat|htm|html|svg|xml)$\">\n"
+                  . "    Require all denied\n"
+                  . "    Deny from all\n"
+                  . "</FilesMatch>\n"
+                  . "Options -ExecCGI -Indexes\n"
+                  . "AddType text/plain .php .phtml .phar .cgi .pl .py .sh\n";
+
+        $current = file_exists($htaccess) ? @file_get_contents($htaccess) : '';
+        if (strpos($current, '2.11.1') === false) {
+            @file_put_contents($htaccess, $desired);
+        }
+
+        $index = $dbfb_root . '/index.php';
+        if (!file_exists($index)) {
+            @file_put_contents($index, '<?php // Silence is golden.');
+        }
     }
 }
