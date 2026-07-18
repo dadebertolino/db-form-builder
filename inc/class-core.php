@@ -852,10 +852,15 @@ class DB_Form_Builder {
             } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
                 $ip = $_SERVER['HTTP_X_REAL_IP'];
             } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-                // X-Forwarded-For può contenere una catena: client, proxy1, proxy2.
-                // Il primo è il client originale. Lo prendiamo solo se è un IP valido.
+                // X-Forwarded-For è una catena "client, proxy1, proxy2" in cui
+                // OGNI hop appende chi ha visto. Il client controlla la testa
+                // della lista: può iniettare qualsiasi IP fittizio come primo
+                // elemento. L'ULTIMO valore è quello scritto dal proxy fidato
+                // più vicino a noi, quindi è l'unico affidabile quando ci
+                // fidiamo del proxy. Prendere il primo elemento consentirebbe
+                // di aggirare il rate limit ruotando IP falsi.
                 $forwarded = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-                $ip = trim($forwarded[0]);
+                $ip = trim(end($forwarded));
             }
         }
 
