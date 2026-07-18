@@ -35,7 +35,7 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
         <label for="dbfb_website_url_<?php echo $form_id; ?>">Website</label>
         <input type="text" name="dbfb_website_url" id="dbfb_website_url_<?php echo $form_id; ?>" value="" autocomplete="off" tabindex="-1">
     </div>
-    <input type="hidden" name="dbfb_timestamp" value="<?php echo time(); ?>">
+    <input type="hidden" name="dbfb_timestamp" value="<?php echo esc_attr(DBFB_Submit::make_time_token()); ?>">
     <?php endif; ?>
     
     <?php 

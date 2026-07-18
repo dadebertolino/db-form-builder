@@ -278,6 +278,7 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - **Escaping modale risposte:** nel dettaglio di una submission, gli URL degli allegati sono ora filtrati (solo `http/https`; schemi come `javascript:` neutralizzati) e le label dei campi sono escapate prima dell'inserimento nel DOM (difesa in profondità).
 - **Rate-limit dietro proxy:** con `dbfb_trust_proxy_headers` attivo, da `X-Forwarded-For` viene ora letto l'ultimo hop (scritto dal proxy fidato) invece del primo (controllabile dal client). Prima un visitatore poteva iniettare un IP fittizio in testa alla catena e aggirare il rate limit ruotando indirizzi falsi.
 - **CSV injection nell'export:** le celle dell'export CSV che iniziano con `= + - @` (o TAB/CR) vengono prefissate con un apice, così non vengono interpretate come formule da Excel/LibreOffice/Sheets all'apertura. Un valore inviato via form pubblico come `=HYPERLINK(...)` non è più eseguibile nel foglio scaricato.
+- **Honeypot time-trap firmato:** il campo temporale anti-bot ora emette un token firmato con HMAC (timestamp + firma verificata server-side) invece di un timestamp in chiaro. Un bot non può più forgiare un valore per superare il controllo "inviato troppo in fretta". Retrocompatibile: i form serviti da cache di versioni precedenti non vengono bloccati (restano coperti da honeypot + rate limit).
 
 ### 2.11.0 — Prova del consenso GDPR (art. 7.1) + Registro consensi unificato
 

@@ -38,8 +38,16 @@ class DBFB_Submit {
                 ]);
                 return;
             }
-            $timestamp = intval($_POST['dbfb_timestamp'] ?? 0);
-            if ($timestamp > 0 && (time() - $timestamp) < 3) {
+            // Time-trap: il form emette un token firmato (timestamp + HMAC).
+            // Se la submission arriva troppo in fretta (< 3s) è verosimilmente
+            // un bot. Il token è firmato server-side (vedi make_time_token),
+            // quindi non è falsificabile: un bot non può forgiare un timestamp
+            // arbitrario per superare il controllo, e un token manomesso viene
+            // scartato. Retrocompat: le submission senza token valido non
+            // vengono bloccate qui (il form potrebbe essere cachato da una
+            // versione precedente), restano coperte da honeypot + rate limit.
+            $elapsed = self::verify_time_token($_POST['dbfb_timestamp'] ?? '');
+            if ($elapsed !== null && $elapsed < 3) {
                 wp_send_json_success([
                     'message' => $form_settings['success_message'] ?? __('Form inviato con successo!', 'db-form-builder')
                 ]);
@@ -312,6 +320,58 @@ class DBFB_Submit {
      * @param array $fields Field definitions del form.
      * @return array Valori sanitizzati (stesse chiavi).
      */
+    /**
+     * Genera un token time-trap firmato per l'anti-bot dell'honeypot (2.11.1).
+     *
+     * Formato: "{timestamp}.{hmac}" dove hmac = HMAC-SHA256(timestamp, salt).
+     * Il salt deriva da wp_salt('nonce'), quindi il token è verificabile
+     * solo dal server e non forgiabile dal client. Emesso nel form come
+     * valore del campo hidden dbfb_timestamp.
+     *
+     * @return string Token firmato.
+     */
+    public static function make_time_token() {
+        $ts  = (string) time();
+        $sig = hash_hmac('sha256', $ts, wp_salt('nonce'));
+        return $ts . '.' . $sig;
+    }
+
+    /**
+     * Verifica un token time-trap e restituisce i secondi trascorsi.
+     *
+     * Controlla la firma HMAC (constant-time) e che il timestamp sia
+     * plausibile (non nel futuro, non più vecchio di 1 ora → token
+     * probabilmente riciclato/cachato: lo consideriamo non valutabile).
+     *
+     * @param string $token Valore ricevuto in dbfb_timestamp.
+     * @return int|null Secondi trascorsi dall'emissione, o null se il token
+     *                  è assente/malformato/non firmato correttamente
+     *                  (in tal caso il chiamante NON blocca — retrocompat).
+     */
+    public static function verify_time_token($token) {
+        $token = is_string($token) ? $token : '';
+        if (strpos($token, '.') === false) {
+            return null; // formato legacy o assente: non valutabile
+        }
+
+        list($ts, $sig) = explode('.', $token, 2);
+        if ($ts === '' || !ctype_digit($ts) || $sig === '') {
+            return null;
+        }
+
+        $expected = hash_hmac('sha256', $ts, wp_salt('nonce'));
+        if (!hash_equals($expected, $sig)) {
+            return null; // firma non valida: token manomesso → non valutabile
+        }
+
+        $elapsed = time() - (int) $ts;
+        if ($elapsed < 0 || $elapsed > HOUR_IN_SECONDS) {
+            return null; // futuro o troppo vecchio: token riciclato/cachato
+        }
+
+        return $elapsed;
+    }
+
     private static function sanitize_submission_data($data, $fields) {
         if (!is_array($data)) return array();
 
