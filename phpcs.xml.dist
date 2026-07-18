@@ -1,0 +1,93 @@
+<?xml version="1.0"?>
+<ruleset name="DB Form Builder">
+    <description>WPCS focalizzato su sicurezza e correttezza; lo stile di formattazione del progetto è volutamente preservato.</description>
+
+    <!-- PHPCS gira sulla logica applicativa (classi inc/ + entrypoint).
+         I template in templates/ usano l'output idiomatico _e()/echo di
+         WordPress e verranno normalizzati in un intervento dedicato di
+         escaping: per ora restano fuori dallo scope per non bloccare la CI
+         con centinaia di violazioni stilistiche non-sicurezza. Il lint
+         sintattico PHP (workflow ci.yml) copre comunque TUTTI i file. -->
+    <file>inc/</file>
+    <file>db-form-builder.php</file>
+    <file>uninstall.php</file>
+    <exclude-pattern>*/.git/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/templates/*</exclude-pattern>
+    <exclude-pattern>*/assets/*</exclude-pattern>
+
+    <arg value="sp"/>
+    <arg name="extensions" value="php"/>
+    <arg name="parallel" value="4"/>
+
+    <!-- Gli error bloccano la CI; i warning informano soltanto. -->
+    <config name="ignore_warnings_on_exit" value="1"/>
+    <config name="minimum_wp_version" value="5.8"/>
+
+    <rule ref="WordPress-Extra">
+        <!-- Stile del progetto: 4 spazi, niente allineamenti WP, niente Yoda. -->
+        <exclude name="Generic.WhiteSpace.DisallowSpaceIndent"/>
+        <exclude name="Generic.WhiteSpace.ScopeIndent"/>
+        <exclude name="Generic.WhiteSpace.ArbitraryParenthesesSpacing"/>
+        <exclude name="Generic.Formatting.MultipleStatementAlignment"/>
+        <exclude name="Generic.Functions.FunctionCallArgumentSpacing"/>
+        <exclude name="Generic.ControlStructures.InlineControlStructure"/>
+        <exclude name="PEAR.Functions.FunctionCallSignature"/>
+        <exclude name="Squiz.Functions.FunctionDeclarationArgumentSpacing"/>
+        <exclude name="Squiz.ControlStructures.ControlSignature"/>
+        <exclude name="Squiz.WhiteSpace"/>
+        <exclude name="WordPress.WhiteSpace"/>
+        <exclude name="WordPress.Arrays"/>
+        <exclude name="NormalizedArrays.Arrays.ArrayBraceSpacing"/>
+        <exclude name="NormalizedArrays.Arrays.CommaAfterLast"/>
+        <exclude name="Universal.WhiteSpace"/>
+        <exclude name="Universal.Arrays"/>
+        <exclude name="Universal.Operators.DisallowShortTernary"/>
+        <exclude name="WordPress.PHP.YodaConditions"/>
+        <exclude name="Squiz.Commenting"/>
+        <exclude name="Generic.Commenting"/>
+        <!-- @ soppressioni su filesystem deliberate (best effort). -->
+        <exclude name="WordPress.PHP.NoSilencedErrors"/>
+        <!-- File naming WP (class-*.php) già rispettato. -->
+        <exclude name="WordPress.Files.FileName"/>
+        <!-- Plugin mono-lingua (italiano): translators comment non applicabili. -->
+        <exclude name="WordPress.WP.I18n.MissingTranslatorsComment"/>
+        <!-- Sniff deprecato in PHPCS 3.13, rimosso in 4.0. -->
+        <exclude name="Generic.Functions.CallTimePassByReference"/>
+        <!-- $wpdb con nomi tabella interpolati: le query usano prefix del core,
+             mai input utente diretto. I placeholder %d/%s sono già usati dove
+             servono. Escluso per evitare falsi positivi massivi. -->
+        <exclude name="WordPress.DB.PreparedSQL"/>
+        <exclude name="WordPress.DB.DirectDatabaseQuery"/>
+        <!-- date() usato per formattazione display/CSV, non per storage:
+             il fuso runtime è quello desiderato (locale del sito). -->
+        <exclude name="WordPress.DateTime.RestrictedFunctions"/>
+        <!-- count() in loop condition: i loop di batch-delete leggono righe
+             fresche a ogni giro, count() sul risultato è intenzionale. -->
+        <exclude name="Squiz.PHP.DisallowSizeFunctionsInLoops"/>
+        <!-- Property $ErrorInfo appartiene a PHPMailer (oggetto core WP),
+             non è codice nostro: il naming snake_case non si applica. -->
+        <exclude name="WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase"/>
+        <!-- i18n con literal non-singolare: stringhe con concatenazione
+             gestite manualmente, non estratte automaticamente. -->
+        <exclude name="WordPress.WP.I18n.NonSingularStringLiteralText"/>
+        <exclude name="Squiz.PHP.DisallowMultipleAssignments"/>
+    </rule>
+
+    <!-- Sicurezza: al momento segnalata come warning (non bloccante) perché
+         il codice esistente ha debito WPCS preesistente (unslash/sanitize su
+         input, escaping output) che verrà normalizzato in un intervento
+         dedicato. Il workflow tratta i warning come informativi: la CI passa
+         ma le violazioni restano visibili nel log. Alzare a error dopo la
+         bonifica per rendere il gate vincolante sul codice nuovo. -->
+    <rule ref="WordPress.Security.EscapeOutput">
+        <type>warning</type>
+    </rule>
+    <rule ref="WordPress.Security.NonceVerification">
+        <type>warning</type>
+    </rule>
+    <rule ref="WordPress.Security.ValidatedSanitizedInput">
+        <type>warning</type>
+    </rule>
+</ruleset>

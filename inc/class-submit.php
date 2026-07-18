@@ -2,23 +2,23 @@
 if (!defined('ABSPATH')) exit;
 
 class DBFB_Submit {
-    
+
     public static function ajax_submit_form() {
         check_ajax_referer('dbfb_submit_nonce', 'nonce');
-        
+
         $form_id = intval($_POST['form_id'] ?? 0);
         $form_data = json_decode(stripslashes($_POST['data'] ?? '{}'), true);
         $recaptcha_token = sanitize_text_field($_POST['recaptcha_token'] ?? '');
-        
+
         if (!$form_id || empty($form_data)) {
             wp_send_json_error(['message' => 'Dati non validi']);
         }
-        
+
         $form = get_post($form_id);
         if (!$form) {
             wp_send_json_error(['message' => 'Form non trovato']);
         }
-        
+
         $form_fields = get_post_meta($form_id, '_dbfb_fields', true) ?: [];
         $form_settings = get_post_meta($form_id, '_dbfb_settings', true) ?: [];
         $global_settings = DB_Form_Builder::get_global_settings();
@@ -54,7 +54,7 @@ class DBFB_Submit {
                 return;
             }
         }
-        
+
         // Rate limiting
         if (!empty($form_settings['rate_limit_enabled'])) {
             $ip = DB_Form_Builder::get_client_ip();
@@ -72,14 +72,14 @@ class DBFB_Submit {
             if ($submissions_count !== false && $submissions_count >= $max_submissions) {
                 wp_send_json_error([
                     'message' => sprintf(
-                        __('Hai raggiunto il limite di %d invii. Riprova tra %d minuti.', 'db-form-builder'),
+                        __('Hai raggiunto il limite di %1$d invii. Riprova tra %2$d minuti.', 'db-form-builder'),
                         $max_submissions, $window_minutes
                     )
                 ]);
             }
             set_transient($transient_key, ($submissions_count ?: 0) + 1, $window_minutes * 60);
         }
-        
+
         // GDPR check (2.3.0+) e cattura prova del consenso (2.11.0).
         // Inizializziamo i campi consenso a NULL: significa "consenso non
         // documentato" (es. form senza checkbox abilitata).
@@ -124,7 +124,7 @@ class DBFB_Submit {
         }
         // Else: né enable_gdpr né intentional → tutti i campi NULL =
         // "consenso non documentato (potenzialmente non conforme)".
-        
+
         // reCAPTCHA — verifichiamo SOLO se il consent gate (2.3.0) ha
         // permesso di caricare lo script lato frontend. Se il gate ha
         // bloccato il caricamento, il client non avrà mai ricevuto il widget
@@ -139,7 +139,7 @@ class DBFB_Submit {
                 wp_send_json_error(['message' => __('Verifica anti-spam fallita. Riprova.', 'db-form-builder')]);
             }
         }
-        
+
         // Hidden fields (conditional logic)
         $hidden_fields = [];
         if (!empty($_POST['hidden_fields'])) {
@@ -147,7 +147,7 @@ class DBFB_Submit {
             if (!is_array($hidden_fields)) $hidden_fields = [];
             $hidden_fields = array_map('sanitize_key', $hidden_fields);
         }
-        
+
         // Validate required (skip hidden)
         foreach ($form_fields as $field) {
             if (in_array($field['id'], $hidden_fields)) continue;
@@ -169,23 +169,23 @@ class DBFB_Submit {
                 ]);
             }
         }
-        
+
         // Remove hidden field data
         foreach ($hidden_fields as $hf) {
             unset($form_data[$hf]);
         }
-        
+
         // Process file uploads
         $uploaded_files = self::process_file_uploads($form_id, $form_fields, $hidden_fields);
         if (is_wp_error($uploaded_files)) {
             wp_send_json_error(['message' => $uploaded_files->get_error_message()]);
         }
-        
+
         // Merge file URLs into form data
         foreach ($uploaded_files as $field_id => $file_urls) {
             $form_data[$field_id] = $file_urls;
         }
-        
+
         // Save submission
         global $wpdb;
         $table = $wpdb->prefix . 'dbfb_submissions';
@@ -244,10 +244,10 @@ class DBFB_Submit {
             // ma chi sviluppa vede l'errore.
             error_log('DB Form Builder: Errore inserimento DB - ' . $wpdb->last_error);
         }
-        
+
         // Email
         $placeholders = DBFB_Email::prepare_placeholders($form, $form_fields, $form_data, $form_settings);
-        
+
         $user_email = '';
         foreach ($form_fields as $field) {
             if ($field['type'] === 'email' && !empty($form_data[$field['id']])) {
@@ -255,15 +255,15 @@ class DBFB_Submit {
                 break;
             }
         }
-        
+
         if (!empty($form_settings['send_confirmation']) && $user_email) {
             DBFB_Email::send_confirmation($user_email, $form_settings, $placeholders);
         }
-        
+
         if (!empty($form_settings['send_admin_notification']) && !empty($form_settings['admin_email'])) {
             DBFB_Email::send_admin($form_settings, $placeholders);
         }
-        
+
         // Webhook
         // Webhook delivery (2.7.0): enqueue async invece dell'invio sincrono.
         // L'enqueue salva in tabella delle deliveries e schedula un dispatch
@@ -280,12 +280,12 @@ class DBFB_Submit {
                 $payload
             );
         }
-        
+
         wp_send_json_success([
             'message' => $form_settings['success_message'] ?? __('Form inviato con successo!', 'db-form-builder')
         ]);
     }
-    
+
     /**
      * @deprecated 2.7.0 Usare DBFB_Webhook::enqueue() per l'invio async.
      * Mantenuto come shim per backward compat se altro codice (custom plugin
@@ -296,7 +296,7 @@ class DBFB_Submit {
         $payload = DBFB_Webhook::build_payload($form, $form_fields, $form_data, $client_ip);
         DBFB_Webhook::enqueue($form->ID, null, $url, $payload);
     }
-    
+
     /**
      * Sanitizza i valori di una submission in base al tipo di ciascun campo (2.11.1).
      *
@@ -429,7 +429,7 @@ class DBFB_Submit {
             error_log('DB Form Builder: reCAPTCHA token vuoto');
             return false;
         }
-        
+
         $response = wp_remote_post('https://www.google.com/recaptcha/api/siteverify', [
             'timeout' => 10,
             'body' => [
@@ -438,66 +438,66 @@ class DBFB_Submit {
                 'remoteip' => DB_Form_Builder::get_client_ip(),
             ]
         ]);
-        
+
         if (is_wp_error($response)) {
             error_log('DB Form Builder: Errore reCAPTCHA - ' . $response->get_error_message());
             return false;
         }
-        
+
         $body = json_decode(wp_remote_retrieve_body($response), true);
         if (empty($body)) {
             error_log('DB Form Builder: Risposta reCAPTCHA vuota');
             return false;
         }
-        
+
         if (isset($body['score'])) {
             $valid = !empty($body['success']) && $body['score'] >= 0.5;
             if (!$valid) error_log('DB Form Builder: reCAPTCHA score basso: ' . ($body['score'] ?? 'N/A'));
             return $valid;
         }
-        
+
         return !empty($body['success']);
     }
-    
+
     // =========================================================
     // FILE UPLOAD
     // =========================================================
-    
+
     private static $blocked_extensions = [
         'php', 'phtml', 'php3', 'php4', 'php5', 'phps',
         'exe', 'js', 'sh', 'bat', 'cmd', 'com', 'cgi', 'pl', 'py',
         'htaccess', 'htpasswd', 'ini', 'phar', 'svg'
     ];
-    
+
     private static function process_file_uploads($form_id, $form_fields, $hidden_fields) {
         $uploaded = [];
-        
+
         foreach ($form_fields as $field) {
             if ($field['type'] !== 'file') continue;
             if (in_array($field['id'], $hidden_fields)) continue;
-            
+
             $file_key = 'dbfb_file_' . $field['id'];
             if (empty($_FILES[$file_key]['name'])) continue;
-            
+
             $is_multiple = !empty($field['file_multiple']);
             $max_size_mb = intval($field['file_max_size'] ?? 5);
             $max_size_bytes = $max_size_mb * 1024 * 1024;
             $allowed_ext_str = $field['file_extensions'] ?? 'jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,zip';
             $allowed_extensions = array_map('trim', array_map('strtolower', explode(',', $allowed_ext_str)));
-            
+
             // Normalize to arrays for uniform processing
             $names = (array) $_FILES[$file_key]['name'];
             $tmp_names = (array) $_FILES[$file_key]['tmp_name'];
             $sizes = (array) $_FILES[$file_key]['size'];
             $errors = (array) $_FILES[$file_key]['error'];
-            
+
             // Filter out empty entries
             $file_count = count($names);
             $urls = [];
-            
+
             for ($i = 0; $i < $file_count; $i++) {
                 if (empty($names[$i]) || $errors[$i] === UPLOAD_ERR_NO_FILE) continue;
-                
+
                 // Check upload error
                 if ($errors[$i] !== UPLOAD_ERR_OK) {
                     return new WP_Error('upload_error', sprintf(
@@ -505,15 +505,15 @@ class DBFB_Submit {
                         sanitize_file_name($names[$i])
                     ));
                 }
-                
+
                 // Check file size
                 if ($sizes[$i] > $max_size_bytes) {
                     return new WP_Error('file_too_large', sprintf(
-                        __('Il file "%s" supera la dimensione massima di %d MB', 'db-form-builder'),
+                        __('Il file "%1$s" supera la dimensione massima di %2$d MB', 'db-form-builder'),
                         sanitize_file_name($names[$i]), $max_size_mb
                     ));
                 }
-                
+
                 // Check extension
                 $ext = strtolower(pathinfo($names[$i], PATHINFO_EXTENSION));
                 if (in_array($ext, self::$blocked_extensions)) {
@@ -524,11 +524,11 @@ class DBFB_Submit {
                 }
                 if (!in_array($ext, $allowed_extensions)) {
                     return new WP_Error('invalid_extension', sprintf(
-                        __('Il tipo di file "%s" non è ammesso. Formati consentiti: %s', 'db-form-builder'),
+                        __('Il tipo di file "%1$s" non è ammesso. Formati consentiti: %2$s', 'db-form-builder'),
                         $ext, $allowed_ext_str
                     ));
                 }
-                
+
                 $safe_filename = sanitize_file_name($names[$i]);
 
                 // Validazione MIME reale del CONTENUTO (2.11.1): wp_check_filetype
@@ -559,15 +559,15 @@ class DBFB_Submit {
                         $safe_filename
                     ));
                 }
-                
+
                 // Create upload directory
                 $upload_dir = self::get_upload_dir($form_id);
                 if (is_wp_error($upload_dir)) return $upload_dir;
-                
+
                 // Generate unique filename
                 $safe_name = wp_unique_filename($upload_dir['path'], sanitize_file_name($names[$i]));
                 $dest_path = $upload_dir['path'] . '/' . $safe_name;
-                
+
                 // Move file
                 if (!move_uploaded_file($tmp_names[$i], $dest_path)) {
                     return new WP_Error('move_failed', sprintf(
@@ -575,10 +575,10 @@ class DBFB_Submit {
                         sanitize_file_name($names[$i])
                     ));
                 }
-                
+
                 // Set proper permissions
                 @chmod($dest_path, 0644);
-                
+
                 $urls[] = [
                     'url' => $upload_dir['url'] . '/' . $safe_name,
                     'name' => sanitize_file_name($names[$i]),
@@ -591,15 +591,15 @@ class DBFB_Submit {
                     'path' => $upload_dir['relative_path'] . '/' . $safe_name,
                 ];
             }
-            
+
             if (!empty($urls)) {
                 $uploaded[$field['id']] = $is_multiple ? $urls : ($urls[0] ?? null);
             }
         }
-        
+
         return $uploaded;
     }
-    
+
     private static function get_upload_dir($form_id) {
         $wp_upload = wp_upload_dir();
         $base_dir = $wp_upload['basedir'] . '/dbfb/' . $form_id;

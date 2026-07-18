@@ -2,16 +2,16 @@
 if (!defined('ABSPATH')) exit;
 
 class DB_Form_Builder {
-    
+
     private static $instance = null;
-    
+
     public static function get_instance() {
         if (null === self::$instance) {
             self::$instance = new self();
         }
         return self::$instance;
     }
-    
+
     private function __construct() {
         // Core
         add_action('init', [$this, 'register_post_type']);
@@ -33,32 +33,34 @@ class DB_Form_Builder {
 
         register_activation_hook(DBFB_PLUGIN_FILE, [$this, 'activate']);
         register_deactivation_hook(DBFB_PLUGIN_FILE, [__CLASS__, 'unschedule_cleanup_cron']);
-        
+
         // Builder
         add_action('wp_ajax_dbfb_save_form', ['DBFB_Builder', 'ajax_save_form']);
         add_action('wp_ajax_dbfb_create_from_template', ['DBFB_Builder', 'ajax_create_from_template']);
-        
+
         // Submit
         add_action('wp_ajax_dbfb_submit_form', ['DBFB_Submit', 'ajax_submit_form']);
         add_action('wp_ajax_nopriv_dbfb_submit_form', ['DBFB_Submit', 'ajax_submit_form']);
-        
+
         // Submissions
         add_action('wp_ajax_dbfb_export_csv', ['DBFB_Submissions', 'ajax_export_csv']);
-        
+
         // Email
         add_action('wp_ajax_dbfb_send_test_email', ['DBFB_Email', 'ajax_send_test_email']);
-        
+
         // Settings
         add_action('wp_ajax_dbfb_save_global_settings', ['DBFB_Settings', 'ajax_save_global_settings']);
         add_action('wp_ajax_dbfb_test_recaptcha', ['DBFB_Settings', 'ajax_test_recaptcha']);
         add_action('wp_ajax_dbfb_test_email', ['DBFB_Settings', 'ajax_test_email']);
         add_action('wp_ajax_dbfb_cleanup_now', ['DBFB_Settings', 'ajax_cleanup_now']);
-        
+
         // Gutenberg
         add_action('init', ['DBFB_Gutenberg', 'register_block']);
-        
+
         // Widget
-        add_action('widgets_init', function() { register_widget('DBFB_Widget'); });
+        add_action('widgets_init', function () {
+ register_widget('DBFB_Widget');
+});
 
         // Privacy declarations (2.3.0+): dichiara i trattamenti del Form
         // Builder al registro privacy unificato. Dalla 2.9.0 si aggancia sia al
@@ -85,11 +87,11 @@ class DB_Form_Builder {
         // queue dopo 5 tentativi.
         DBFB_Webhook::init();
     }
-    
+
     // =========================================================
     // ACTIVATION & DB
     // =========================================================
-    
+
     public function activate() {
         self::maybe_create_table();
         self::maybe_upgrade_schema();
@@ -234,7 +236,7 @@ class DB_Form_Builder {
             ));
             foreach ($rows as $row) {
                 $files_deleted += self::delete_submission_files($row);
-                $rows_processed++;
+                ++$rows_processed;
                 // Cancella subito la riga DB così la query successiva non
                 // ripesca le stesse righe (la WHERE submitted_at non
                 // distingue chi è già stato processato).
@@ -271,7 +273,7 @@ class DB_Form_Builder {
     public static function maybe_create_table() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
         // Tabella submissions (storica).
         $table = $wpdb->prefix . 'dbfb_submissions';
@@ -390,11 +392,11 @@ class DB_Form_Builder {
         // segnalate nella UI come "consenso non documentato (versione precedente)".
         if ($current < 4) {
             $cols_to_add = array(
-                'gdpr_consent_given'           => "tinyint(1) DEFAULT NULL AFTER ip_hash",
-                'gdpr_consent_text'            => "text AFTER gdpr_consent_given",
-                'gdpr_consent_timestamp'       => "datetime DEFAULT NULL AFTER gdpr_consent_text",
-                'gdpr_consent_privacy_url'     => "varchar(500) DEFAULT NULL AFTER gdpr_consent_timestamp",
-                'gdpr_consent_policy_version'  => "bigint(20) UNSIGNED DEFAULT 0 AFTER gdpr_consent_privacy_url",
+                'gdpr_consent_given'           => 'tinyint(1) DEFAULT NULL AFTER ip_hash',
+                'gdpr_consent_text'            => 'text AFTER gdpr_consent_given',
+                'gdpr_consent_timestamp'       => 'datetime DEFAULT NULL AFTER gdpr_consent_text',
+                'gdpr_consent_privacy_url'     => 'varchar(500) DEFAULT NULL AFTER gdpr_consent_timestamp',
+                'gdpr_consent_policy_version'  => 'bigint(20) UNSIGNED DEFAULT 0 AFTER gdpr_consent_privacy_url',
             );
             foreach ($cols_to_add as $col => $def) {
                 $exists = $wpdb->get_var("SHOW COLUMNS FROM $table LIKE '$col'");
@@ -411,11 +413,11 @@ class DB_Form_Builder {
 
         update_option('dbfb_schema_version', self::SCHEMA_VERSION);
     }
-    
+
     // =========================================================
     // CPT
     // =========================================================
-    
+
     public function register_post_type() {
         register_post_type('dbfb_form', [
             'labels' => [
@@ -431,11 +433,11 @@ class DB_Form_Builder {
             'capability_type' => 'post',
         ]);
     }
-    
+
     // =========================================================
     // ADMIN MENU
     // =========================================================
-    
+
     /**
      * Admin notice (solo pagine del plugin) per server non-Apache (2.11.1).
      *
@@ -487,7 +489,7 @@ class DB_Form_Builder {
             [$this, 'render_forms_page'],
             'dashicons-feedback', 30
         );
-        
+
         add_submenu_page('dbfb-forms', __('Tutti i Form', 'db-form-builder'), __('Tutti i Form', 'db-form-builder'), 'manage_options', 'dbfb-forms', [$this, 'render_forms_page']);
         add_submenu_page('dbfb-forms', __('Nuovo Form', 'db-form-builder'), __('Nuovo Form', 'db-form-builder'), 'manage_options', 'dbfb-new-form', ['DBFB_Builder', 'render_new_form']);
         add_submenu_page('dbfb-forms', __('Risposte', 'db-form-builder'), __('Risposte', 'db-form-builder'), 'manage_options', 'dbfb-submissions', ['DBFB_Submissions', 'render_all_submissions_page']);
@@ -524,7 +526,7 @@ class DB_Form_Builder {
                 $retried = 0;
                 foreach ($ids as $id) {
                     DBFB_Webhook::retry_delivery($id);
-                    $retried++;
+                    ++$retried;
                 }
                 wp_redirect(add_query_arg('retried', $retried, admin_url('admin.php?page=dbfb-webhook-deliveries')));
                 exit;
@@ -572,19 +574,19 @@ class DB_Form_Builder {
 
         include DBFB_PLUGIN_DIR . 'templates/admin/webhook-deliveries.php';
     }
-    
+
     // =========================================================
     // SCRIPTS
     // =========================================================
-    
+
     public function admin_scripts($hook) {
         if (strpos($hook, 'dbfb') === false) return;
-        
+
         wp_enqueue_media();
         wp_enqueue_style('dbfb-admin', DBFB_PLUGIN_URL . 'assets/css/admin.css', [], DBFB_VERSION);
         wp_enqueue_script('sortablejs', 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js', [], '1.15.0', true);
         wp_enqueue_script('dbfb-admin', DBFB_PLUGIN_URL . 'assets/js/admin.js', ['jquery', 'sortablejs'], DBFB_VERSION, true);
-        
+
         wp_localize_script('dbfb-admin', 'dbfb', [
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('dbfb_nonce'),
@@ -595,7 +597,7 @@ class DB_Form_Builder {
             ]
         ]);
     }
-    
+
     public function frontend_scripts() {
         $global_settings = self::get_global_settings();
 
@@ -637,32 +639,32 @@ class DB_Form_Builder {
             : 'https://www.google.com/recaptcha/api.js';
         wp_enqueue_script('google-recaptcha', $url, array(), null, true);
     }
-    
+
     // =========================================================
     // ROUTING
     // =========================================================
-    
+
     public function render_forms_page() {
         if (isset($_GET['action']) && $_GET['action'] === 'submissions' && isset($_GET['form_id'])) {
             DBFB_Submissions::render_page(intval($_GET['form_id']));
             return;
         }
-        
+
         if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['form_id'])) {
             DBFB_Builder::render_form_builder(intval($_GET['form_id']));
             return;
         }
-        
+
         $forms = get_posts([
             'post_type' => 'dbfb_form',
             'posts_per_page' => -1,
             'orderby' => 'date',
             'order' => 'DESC'
         ]);
-        
+
         include DBFB_PLUGIN_DIR . 'templates/admin/forms-list.php';
     }
-    
+
     public function render_form_shortcode($atts) {
         $atts = shortcode_atts(['id' => 0], $atts);
         $form_id = intval($atts['id']);
@@ -682,14 +684,14 @@ class DB_Form_Builder {
         include DBFB_PLUGIN_DIR . 'templates/frontend/form.php';
         return ob_get_clean();
     }
-    
+
     // =========================================================
     // ADMIN ACTIONS (before output)
     // =========================================================
-    
+
     public function handle_form_actions() {
         if (!isset($_GET['page']) || $_GET['page'] !== 'dbfb-forms') return;
-        
+
         // Delete form
         if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['form_id'])) {
             $form_id = intval($_GET['form_id']);
@@ -697,14 +699,14 @@ class DB_Form_Builder {
                 wp_die(__('Azione non autorizzata', 'db-form-builder'));
             }
             if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti', 'db-form-builder'));
-            
+
             wp_delete_post($form_id, true);
             global $wpdb;
             $wpdb->delete($wpdb->prefix . 'dbfb_submissions', ['form_id' => $form_id], ['%d']);
             wp_redirect(admin_url('admin.php?page=dbfb-forms&deleted=1'));
             exit;
         }
-        
+
         // Duplicate form
         if (isset($_GET['action']) && $_GET['action'] === 'duplicate' && isset($_GET['form_id'])) {
             $form_id = intval($_GET['form_id']);
@@ -712,16 +714,16 @@ class DB_Form_Builder {
                 wp_die(__('Azione non autorizzata', 'db-form-builder'));
             }
             if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti', 'db-form-builder'));
-            
+
             $original = get_post($form_id);
             if (!$original) wp_die(__('Form non trovato', 'db-form-builder'));
-            
+
             $new_form_id = wp_insert_post([
                 'post_type' => 'dbfb_form',
                 'post_title' => $original->post_title . ' (copia)',
                 'post_status' => 'publish',
             ]);
-            
+
             if (!is_wp_error($new_form_id)) {
                 $fields = get_post_meta($form_id, '_dbfb_fields', true);
                 $settings = get_post_meta($form_id, '_dbfb_settings', true);
@@ -733,7 +735,7 @@ class DB_Form_Builder {
             wp_redirect(admin_url('admin.php?page=dbfb-forms'));
             exit;
         }
-        
+
         // Delete single submission
         if (isset($_GET['action']) && $_GET['action'] === 'delete_submission' && isset($_GET['submission_id'])) {
             $submission_id = intval($_GET['submission_id']);
@@ -759,7 +761,7 @@ class DB_Form_Builder {
             wp_redirect(admin_url('admin.php?page=' . $redirect_page . '&sub_deleted=1'));
             exit;
         }
-        
+
         // Bulk delete submissions
         if (isset($_POST['dbfb_bulk_action']) && $_POST['dbfb_bulk_action'] === 'delete' && !empty($_POST['submission_ids'])) {
             $form_id = intval($_POST['form_id'] ?? 0);
@@ -831,11 +833,11 @@ class DB_Form_Builder {
             exit;
         }
     }
-    
+
     // =========================================================
     // SHARED HELPERS
     // =========================================================
-    
+
     public static function get_global_settings() {
         $defaults = [
             'recaptcha_version' => 'v2',
@@ -865,7 +867,7 @@ class DB_Form_Builder {
         ];
         return wp_parse_args(get_option('dbfb_global_settings', []), $defaults);
     }
-    
+
     /**
      * Restituisce l'IP del client.
      *
@@ -1171,7 +1173,7 @@ class DB_Form_Builder {
                 $abs_path = self::resolve_attachment_path($entry, $basedir, $baseurl);
                 if ($abs_path && file_exists($abs_path) && is_file($abs_path)) {
                     if (@unlink($abs_path)) {
-                        $deleted++;
+                        ++$deleted;
                     } elseif (defined('WP_DEBUG') && WP_DEBUG) {
                         error_log("DB Form Builder: impossibile cancellare l'allegato {$abs_path} (permessi?)");
                     }

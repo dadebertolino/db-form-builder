@@ -328,15 +328,15 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 // 2.8.0: rileva form con informativa privacy specifica.
                 if (!empty($settings['enable_gdpr']) && !empty($settings['gdpr_link'])) {
                     $features['has_specific_privacy_notice'] = true;
-                    $features['forms_with_specific_notice']++;
+                    ++$features['forms_with_specific_notice'];
                 }
                 // 2.10.0: conteggio form senza checkbox GDPR.
-                $features['forms_total']++;
+                ++$features['forms_total'];
                 if (empty($settings['enable_gdpr'])) {
                     if (!empty($settings['gdpr_intentionally_disabled'])) {
-                        $features['forms_gdpr_intentional_off']++;
+                        ++$features['forms_gdpr_intentional_off'];
                     } else {
-                        $features['forms_without_gdpr']++;
+                        ++$features['forms_without_gdpr'];
                     }
                 }
             }

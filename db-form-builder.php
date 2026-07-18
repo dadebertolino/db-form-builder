@@ -7,6 +7,8 @@
  * Author: Davide Bertolino
  * Author URI: https://www.davidebertolino.it
  * Text Domain: db-form-builder
+ * Requires at least: 5.8
+ * Requires PHP: 7.4
  * License: GPL v2 or later
  */
 

@@ -2,22 +2,22 @@
 if (!defined('ABSPATH')) exit;
 
 class DBFB_Builder {
-    
+
     public static function render_new_form() {
         self::render_form_builder(0);
     }
-    
+
     public static function render_form_builder($form_id = 0) {
         $form = null;
         $form_fields = [];
         $form_settings = [];
-        
+
         if ($form_id > 0) {
             $form = get_post($form_id);
             $form_fields = get_post_meta($form_id, '_dbfb_fields', true) ?: [];
             $form_settings = get_post_meta($form_id, '_dbfb_settings', true) ?: [];
         }
-        
+
         $default_settings = [
             'submit_text' => __('Invia', 'db-form-builder'),
             'success_message' => __('Grazie! Il modulo è stato inviato con successo.', 'db-form-builder'),
@@ -50,32 +50,32 @@ class DBFB_Builder {
             // viene firmata con HMAC-SHA256(secret, "{timestamp}.{body}").
             'webhook_secret' => '',
         ];
-        
+
         $form_settings = wp_parse_args($form_settings, $default_settings);
         $templates = self::get_templates();
         $show_templates = (empty($form_id) || $form_id == 0);
-        
+
         include DBFB_PLUGIN_DIR . 'templates/admin/form-builder.php';
     }
-    
+
     // =========================================================
     // SAVE FORM
     // =========================================================
-    
+
     public static function ajax_save_form() {
         check_ajax_referer('dbfb_nonce', 'nonce');
         if (!current_user_can('manage_options')) {
             wp_send_json_error(['message' => 'Permessi insufficienti']);
         }
-        
+
         $form_id = intval($_POST['form_id'] ?? 0);
         $title = sanitize_text_field($_POST['title'] ?? '');
         $fields = json_decode(stripslashes($_POST['fields'] ?? '[]'), true);
         $settings = json_decode(stripslashes($_POST['settings'] ?? '{}'), true);
-        
+
         $sanitized_fields = self::sanitize_fields($fields);
         $sanitized_settings = self::sanitize_settings($settings);
-        
+
         if ($form_id > 0) {
             wp_update_post(['ID' => $form_id, 'post_title' => $title]);
         } else {
@@ -85,13 +85,13 @@ class DBFB_Builder {
                 'post_status' => 'publish',
             ]);
         }
-        
+
         update_post_meta($form_id, '_dbfb_fields', $sanitized_fields);
         update_post_meta($form_id, '_dbfb_settings', $sanitized_settings);
-        
+
         wp_send_json_success(['form_id' => $form_id, 'message' => 'Form salvato con successo!']);
     }
-    
+
     private static function sanitize_fields($fields) {
         $sanitized = [];
         foreach ($fields as $field) {
@@ -103,7 +103,7 @@ class DBFB_Builder {
                 'required' => !empty($field['required']),
                 'options' => isset($field['options']) ? array_map('sanitize_text_field', $field['options']) : [],
             ];
-            
+
             if ($field['type'] === 'html') {
                 $sf['content'] = wp_kses_post($field['content'] ?? '');
             }
@@ -116,7 +116,7 @@ class DBFB_Builder {
                 $sf['file_max_size'] = intval($field['file_max_size'] ?? 5);
                 $sf['file_multiple'] = !empty($field['file_multiple']);
             }
-            
+
             // Logica condizionale
             if (!empty($field['conditions']) && is_array($field['conditions'])) {
                 $conditions = $field['conditions'];
@@ -137,12 +137,12 @@ class DBFB_Builder {
                     'rules' => $sanitized_rules,
                 ];
             }
-            
+
             $sanitized[] = $sf;
         }
         return $sanitized;
     }
-    
+
     private static function sanitize_settings($settings) {
         return [
             'submit_text' => sanitize_text_field($settings['submit_text'] ?? 'Invia'),
@@ -185,11 +185,11 @@ class DBFB_Builder {
         $s = preg_replace('/[^\x21-\x7E]/', '', $s);
         return mb_substr($s, 0, 128);
     }
-    
+
     // =========================================================
     // TEMPLATES
     // =========================================================
-    
+
     public static function get_templates() {
         return [
             'contact' => [
@@ -294,39 +294,39 @@ class DBFB_Builder {
             ],
         ];
     }
-    
+
     public static function ajax_create_from_template() {
         check_ajax_referer('dbfb_nonce', 'nonce');
         if (!current_user_can('manage_options')) {
             wp_send_json_error(['message' => 'Permessi insufficienti']);
         }
-        
+
         $template_id = sanitize_key($_POST['template'] ?? '');
         $templates = self::get_templates();
-        
+
         if (!isset($templates[$template_id])) {
             wp_send_json_error(['message' => 'Template non trovato']);
         }
-        
+
         $template = $templates[$template_id];
-        
+
         $form_id = wp_insert_post([
             'post_type' => 'dbfb_form',
             'post_title' => $template['name'],
             'post_status' => 'publish',
         ]);
-        
+
         if (is_wp_error($form_id)) {
             wp_send_json_error(['message' => 'Errore nella creazione del form']);
         }
-        
+
         $fields = [];
         foreach ($template['fields'] as $field) {
             $field['id'] = $field['id'] . '_' . time();
             $fields[] = $field;
         }
         update_post_meta($form_id, '_dbfb_fields', $fields);
-        
+
         $default_settings = [
             'submit_text' => 'Invia',
             'success_message' => 'Grazie! Form inviato con successo.',
@@ -341,7 +341,7 @@ class DBFB_Builder {
         ];
         $settings = wp_parse_args($template['settings'], $default_settings);
         update_post_meta($form_id, '_dbfb_settings', $settings);
-        
+
         wp_send_json_success([
             'form_id' => $form_id,
             'redirect' => admin_url('admin.php?page=dbfb-forms&action=edit&form_id=' . $form_id)
