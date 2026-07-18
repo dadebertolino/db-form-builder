@@ -22,7 +22,13 @@ class DBFB_Submit {
         $form_fields = get_post_meta($form_id, '_dbfb_fields', true) ?: [];
         $form_settings = get_post_meta($form_id, '_dbfb_settings', true) ?: [];
         $global_settings = DB_Form_Builder::get_global_settings();
-        
+
+        // Sicurezza (2.11.1): sanitizza i valori inviati PER TIPO di campo
+        // prima di qualsiasi uso (salvataggio DB, email, webhook, render admin).
+        // I valori arrivano da json_decode del POST e senza questo passaggio
+        // verrebbero salvati grezzi → XSS immagazzinato nella dashboard admin.
+        $form_data = self::sanitize_submission_data($form_data, $form_fields);
+
         // Honeypot check
         if (!empty($form_settings['enable_honeypot'])) {
             $honeypot_value = sanitize_text_field($_POST['dbfb_website_url'] ?? '');
@@ -283,6 +289,81 @@ class DBFB_Submit {
         DBFB_Webhook::enqueue($form->ID, null, $url, $payload);
     }
     
+    /**
+     * Sanitizza i valori di una submission in base al tipo di ciascun campo (2.11.1).
+     *
+     * Difesa primaria contro XSS immagazzinato: i valori arrivano da
+     * json_decode del POST utente e vengono salvati/renderizzati altrove.
+     * La chiave GDPR (dbfb_gdpr_consent) e i valori speciali (array file)
+     * sono gestiti a valle; qui trattiamo i valori scalari e le liste
+     * (checkbox multipli) prodotti dal frontend.
+     *
+     * Mappa tipo → sanitizzazione:
+     *  - email               → sanitize_email
+     *  - textarea            → sanitize_textarea_field (preserva a capo)
+     *  - number/tel/date/... → sanitize_text_field
+     *  - default             → sanitize_text_field
+     *  - array di scalari    → sanitize_text_field elemento per elemento
+     *
+     * I campi di tipo file NON sono qui: i loro valori vengono costruiti
+     * server-side da process_file_uploads(), non dal payload utente.
+     *
+     * @param array $data   Valori decodificati dal POST.
+     * @param array $fields Field definitions del form.
+     * @return array Valori sanitizzati (stesse chiavi).
+     */
+    private static function sanitize_submission_data($data, $fields) {
+        if (!is_array($data)) return array();
+
+        // Mappa field_id → type per lookup O(1).
+        $types = array();
+        foreach ((array) $fields as $f) {
+            if (!empty($f['id'])) {
+                $types[$f['id']] = $f['type'] ?? 'text';
+            }
+        }
+
+        $clean = array();
+        foreach ($data as $key => $value) {
+            // La chiave del consenso è un flag: la lasciamo passare grezza,
+            // viene valutata (empty check) e poi unset a valle.
+            if ($key === 'dbfb_gdpr_consent') {
+                $clean[$key] = $value;
+                continue;
+            }
+
+            $type = $types[$key] ?? 'text';
+
+            if (is_array($value)) {
+                // Checkbox multipli o liste di scalari.
+                $clean[$key] = array_map(function ($v) {
+                    return is_scalar($v) ? sanitize_text_field((string) $v) : '';
+                }, $value);
+                continue;
+            }
+
+            if (!is_scalar($value)) {
+                $clean[$key] = '';
+                continue;
+            }
+
+            $value = (string) $value;
+            switch ($type) {
+                case 'email':
+                    $clean[$key] = sanitize_email($value);
+                    break;
+                case 'textarea':
+                    $clean[$key] = sanitize_textarea_field($value);
+                    break;
+                default:
+                    $clean[$key] = sanitize_text_field($value);
+                    break;
+            }
+        }
+
+        return $clean;
+    }
+
     private static function verify_recaptcha($token, $secret_key) {
         if (empty($token)) {
             error_log('DB Form Builder: reCAPTCHA token vuoto');

@@ -272,6 +272,11 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 
 ## Changelog
 
+### 2.11.1 — Fix sicurezza: sanitizzazione submission + escaping modale
+
+- **XSS immagazzinato (importante):** i valori inviati dai form vengono ora sanitizzati lato server per tipo di campo (email → `sanitize_email`, textarea → `sanitize_textarea_field`, resto → `sanitize_text_field`) prima di essere salvati, inviati via email/webhook o mostrati nella dashboard. Prima venivano salvati grezzi: un valore contenente markup poteva eseguire script nella pagina admin delle risposte.
+- **Escaping modale risposte:** nel dettaglio di una submission, gli URL degli allegati sono ora filtrati (solo `http/https`; schemi come `javascript:` neutralizzati) e le label dei campi sono escapate prima dell'inserimento nel DOM (difesa in profondità).
+
 ### 2.11.0 — Prova del consenso GDPR (art. 7.1) + Registro consensi unificato
 
 Estensione che chiude il cerchio dell'accountability sul consenso ai form: ogni submission registra ora la prova esplicita del consenso ricevuto, e contribuisce al **Registro consensi** unificato del DB Privacy Hub 1.3.0+.

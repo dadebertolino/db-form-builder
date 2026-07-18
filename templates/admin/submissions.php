@@ -264,21 +264,33 @@ jQuery(document).ready(function($) {
             var value = fields[key] || '';
             var cellHtml = '';
             
+            // Escape sicuro degli URL: solo http/https, altri schemi (javascript:,
+            // data:) neutralizzati per prevenire XSS via href.
+            var safeUrl = function(u) {
+                u = String(u == null ? '' : u);
+                if (/^https?:\/\//i.test(u)) {
+                    return u.replace(/"/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E');
+                }
+                return '#';
+            };
+
             // Check if value is a file object or array of file objects
             if (value && typeof value === 'object' && value.url) {
                 // Single file
-                cellHtml = '<a href="' + value.url + '" target="_blank" rel="noopener">📎 ' + $('<span>').text(value.name).html() + '</a>';
+                cellHtml = '<a href="' + safeUrl(value.url) + '" target="_blank" rel="noopener">📎 ' + $('<span>').text(value.name).html() + '</a>';
             } else if (Array.isArray(value) && value.length && value[0] && typeof value[0] === 'object' && value[0].url) {
                 // Multiple files
                 cellHtml = value.map(function(f) {
-                    return '<a href="' + f.url + '" target="_blank" rel="noopener">📎 ' + $('<span>').text(f.name).html() + '</a>';
+                    return '<a href="' + safeUrl(f.url) + '" target="_blank" rel="noopener">📎 ' + $('<span>').text(f.name).html() + '</a>';
                 }).join('<br>');
             } else {
                 if (Array.isArray(value)) value = value.join(', ');
                 cellHtml = $('<div>').text(value).html();
             }
-            
-            html += '<tr><th>' + labels[key] + '</th><td style="word-break:break-word;">' + cellHtml + '</td></tr>';
+
+            // Label escapata (difesa in profondità: già sanitize_text_field al salvataggio).
+            var safeLabel = $('<span>').text(labels[key]).html();
+            html += '<tr><th>' + safeLabel + '</th><td style="word-break:break-word;">' + cellHtml + '</td></tr>';
         }
         html += '</table>';
         
