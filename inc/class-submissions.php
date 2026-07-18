@@ -105,7 +105,7 @@ class DBFB_Submissions {
         if ($include_ip_col) {
             $headers[] = $ip_header;
         }
-        fputcsv($output, $headers, ';');
+        fputcsv($output, array_map(array(__CLASS__, 'csv_escape'), $headers), ';');
 
         foreach ($submissions as $submission) {
             $info        = DB_Form_Builder::get_submission_fields($submission, $form_fields_raw);
@@ -139,10 +139,32 @@ class DBFB_Submissions {
                 $ip_info = DB_Form_Builder::format_submission_ip($submission, 'full');
                 $row[] = $ip_info['raw'];
             }
-            fputcsv($output, $row, ';');
+            fputcsv($output, array_map(array(__CLASS__, 'csv_escape'), $row), ';');
         }
 
         fclose($output);
         exit;
+    }
+
+    /**
+     * Neutralizza la CSV injection (formula injection) su una cella.
+     *
+     * Excel/LibreOffice/Sheets interpretano come formula qualsiasi cella che
+     * inizia con = + - @ (o TAB / CR, usati per bypassare i filtri). Un campo
+     * di form pubblico tipo "=HYPERLINK(...)" o "=cmd|..." verrebbe eseguito
+     * all'apertura del CSV esportato. Prefissiamo un apice: la cella resta
+     * leggibile come testo e non viene valutata.
+     *
+     * Riferimento: OWASP "CSV Injection".
+     *
+     * @param mixed $cell Valore della cella.
+     * @return string Valore neutralizzato.
+     */
+    public static function csv_escape($cell) {
+        $cell = (string) $cell;
+        if ($cell !== '' && strpbrk($cell[0], "=+-@\t\r") !== false) {
+            return "'" . $cell;
+        }
+        return $cell;
     }
 }
