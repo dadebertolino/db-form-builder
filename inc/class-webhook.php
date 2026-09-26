@@ -128,6 +128,41 @@ if (!class_exists('DBFB_Webhook')) {
         }
 
         /**
+         * Sostituisce gli URL degli allegati con link firmati a scadenza (2.13.0).
+         *
+         * Dalla 2.13.0 uploads/dbfb/ nega l'accesso diretto: l'URL salvato
+         * non è più raggiungibile dai destinatari (Zapier, Make, endpoint
+         * custom). Le chiavi del payload restano invariate, cambia solo il
+         * valore di 'url' in fields[].value (campi file) e in raw_data.
+         * Disattivabile con il filter dbfb_webhook_signed_file_links.
+         *
+         * @param array $payload Payload decodificato della delivery.
+         * @return array
+         */
+        public static function with_signed_file_links($payload) {
+            if (!is_array($payload) || !apply_filters('dbfb_webhook_signed_file_links', true, $payload)) {
+                return $payload;
+            }
+            if (!empty($payload['fields']) && is_array($payload['fields'])) {
+                foreach ($payload['fields'] as $i => $field) {
+                    if (is_array($field) && ($field['type'] ?? '') === 'file' && isset($field['value'])) {
+                        $payload['fields'][$i]['value'] = DBFB_Submissions::with_signed_attachment_urls($field['value']);
+                    }
+                }
+            }
+            // raw_data non ha i tipi: with_signed_attachment_urls tocca solo le
+            // entry {url, name} che puntano davvero in uploads/dbfb/.
+            if (!empty($payload['raw_data']) && is_array($payload['raw_data'])) {
+                foreach ($payload['raw_data'] as $key => $value) {
+                    if (is_array($value)) {
+                        $payload['raw_data'][$key] = DBFB_Submissions::with_signed_attachment_urls($value);
+                    }
+                }
+            }
+            return $payload;
+        }
+
+        /**
          * Mette in coda una delivery webhook e schedula il primo dispatch.
          *
          * @param int    $form_id
@@ -193,6 +228,12 @@ if (!class_exists('DBFB_Webhook')) {
                 self::mark_failed($delivery_id, 0, 'Payload corrotto, impossibile inviare');
                 return;
             }
+
+            // 2.13.0: gli URL degli allegati vengono sostituiti con link
+            // firmati generati ORA, a ogni tentativo (anche retry automatici
+            // e "Re-invia" manuale): il link resta valido per tutto il TTL a
+            // partire dall'invio effettivo. Il payload salvato non cambia.
+            $payload = self::with_signed_file_links($payload);
 
             // Recupera secret HMAC dal form per firmare il payload.
             $form_settings = get_post_meta((int) $delivery->form_id, '_dbfb_settings', true);

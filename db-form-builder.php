@@ -3,7 +3,7 @@
  * Plugin Name: DB Form Builder
  * Plugin URI: https://www.davidebertolino.it
  * Description: Form builder con drag & drop, logica condizionale, reCAPTCHA gated dal consenso, email personalizzabili, export CSV con header esplicativi. Privacy by design: IP hashato, retention con pulizia allegati, snapshot fields, integrazione DSAR WordPress + DB Privacy Hub, informativa privacy per singolo form, monitoraggio conformità consenso GDPR. Webhook async con retry + HMAC signing.
- * Version: 2.12.0
+ * Version: 2.13.0
  * Author: Davide Bertolino
  * Author URI: https://www.davidebertolino.it
  * Text Domain: db-form-builder
@@ -14,10 +14,25 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DBFB_VERSION', '2.12.0');
+define('DBFB_VERSION', '2.13.0');
 define('DBFB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DBFB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBFB_PLUGIN_FILE', __FILE__);
+
+/*
+ * Privacy capabilities (per references/PRIVACY-INTEGRATION.md):
+ *  - Personal data:        YES — submission in wp_dbfb_submissions, allegati in
+ *                          uploads/dbfb/ (accesso diretto negato, download solo
+ *                          da admin), payload webhook in wp_dbfb_webhook_deliveries
+ *  - Third-party scripts:  YES — Google reCAPTCHA (opzionale), caricato lato
+ *                          client solo dopo il consenso (categoria filtrabile
+ *                          via dbfb_recaptcha_category, default 'marketing')
+ *  - User consent:         YES — checkbox GDPR per form, prova del consenso
+ *                          (art. 7.1) salvata nelle colonne gdpr_consent_*
+ *  - DSAR-aware:           YES — DBFB_Privacy_DSAR (exporter + eraser)
+ *  - Hub-aware:            YES — dbph_processing_register, dbph_user_data_exporters/
+ *                          erasers, dbph_consents_register (sorgente dbfb_form_consents)
+ */
 
 /**
  * Marker letto dal DB Privacy Hub (DBPH_Policy_Generator::has_dbfb_dsar()) per
@@ -26,6 +41,12 @@ define('DBFB_PLUGIN_FILE', __FILE__);
  * 2.5.0+ ma reso esplicito come costante a partire dalla 2.9.0.
  */
 define('DBFB_DSAR_AVAILABLE', true);
+
+// Componente condiviso (2.13.0): aggiornamenti automatici da GitHub Releases.
+require_once DBFB_PLUGIN_DIR . 'inc/class-updater.php';
+if (class_exists('DB_GitHub_Updater')) {
+    new DB_GitHub_Updater(__FILE__, 'dadebertolino', 'db-form-builder');
+}
 
 // Includes
 require_once DBFB_PLUGIN_DIR . 'inc/class-core.php';

@@ -48,6 +48,10 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
         // Tetto di batch per singola chiamata dell'eraser (2.11.2): 50 x 100 = 5000 candidati.
         const ERASER_MAX_BATCHES = 50;
 
+        // Tetto di chiamate per singola richiesta di cancellazione (2.13.0):
+        // 200 x 5000 = 1.000.000 di candidati, ben oltre ogni caso reale.
+        const ERASER_MAX_PAGES = 200;
+
         /**
          * Inizializzazione — chiamata da DB_Form_Builder->__construct().
          *
@@ -182,12 +186,53 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                 }
 
                 // L'IP viene incluso solo se è disponibile (rispetta storage mode).
+                // 2.13.0: etichetta coerente con format_submission_ip(): "hash"
+                // solo se il valore è davvero l'hash, altrimenti IP in chiaro
+                // (submission legacy o modalità "IP in chiaro").
                 $ip_info = DB_Form_Builder::format_submission_ip($row, 'full');
                 if ($ip_info['raw'] !== '') {
+                    $is_hash = isset($row->ip_hash) && (string) $row->ip_hash !== '';
                     $items[] = array(
                         'name'  => __('Indirizzo IP', 'db-form-builder'),
-                        'value' => $ip_info['raw'] . ' ' . __('(hash SHA-256, irreversibile)', 'db-form-builder'),
+                        'value' => $ip_info['raw'] . ' ' . ($is_hash
+                            ? __('(hash SHA-256, irreversibile)', 'db-form-builder')
+                            : __('(in chiaro)', 'db-form-builder')),
                     );
+                }
+
+                // 2.13.0: prova del consenso (art. 7.1), parte dei dati
+                // dell'interessato ai fini dell'art. 15. NULL = non documentato.
+                if (isset($row->gdpr_consent_given) && $row->gdpr_consent_given !== null) {
+                    $items[] = array(
+                        'name'  => __('Consenso al trattamento', 'db-form-builder'),
+                        'value' => (int) $row->gdpr_consent_given === 1
+                            ? __('Sì', 'db-form-builder')
+                            : __('No (modulo senza checkbox di consenso)', 'db-form-builder'),
+                    );
+                    if (!empty($row->gdpr_consent_text)) {
+                        $items[] = array(
+                            'name'  => __('Testo del consenso', 'db-form-builder'),
+                            'value' => (string) $row->gdpr_consent_text,
+                        );
+                    }
+                    if (!empty($row->gdpr_consent_timestamp)) {
+                        $items[] = array(
+                            'name'  => __('Data del consenso', 'db-form-builder'),
+                            'value' => (string) $row->gdpr_consent_timestamp,
+                        );
+                    }
+                    if (!empty($row->gdpr_consent_privacy_url)) {
+                        $items[] = array(
+                            'name'  => __('Informativa privacy', 'db-form-builder'),
+                            'value' => (string) $row->gdpr_consent_privacy_url,
+                        );
+                    }
+                    if (!empty($row->gdpr_consent_policy_version)) {
+                        $items[] = array(
+                            'name'  => __('Versione informativa (Privacy Hub)', 'db-form-builder'),
+                            'value' => (string) (int) $row->gdpr_consent_policy_version,
+                        );
+                    }
                 }
 
                 $data[] = array(
@@ -250,12 +295,22 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
 
             // 2.11.2: l'eraser non può paginare con OFFSET sulla stessa tabella
             // da cui cancella (dopo il primo batch l'offset salterebbe righe
-            // ancora da cancellare). Scorriamo invece i candidati con un
-            // cursore sull'id all'interno della stessa chiamata. Il tetto di
-            // batch evita timeout: se viene raggiunto, WP richiama l'eraser
-            // e la scansione riparte dall'inizio (le righe già cancellate non
-            // ricompaiono, restano solo i falsi positivi del LIKE).
-            $after_id = 0;
+            // ancora da cancellare). Scorriamo i candidati con un cursore
+            // sull'id, con un tetto di batch per chiamata contro i timeout.
+            //
+            // 2.13.0: il cursore viene conservato fra una chiamata e l'altra
+            // (WP richiama l'eraser con $page crescente finché done=false).
+            // Prima ripartiva da 0 a ogni chiamata: con più di 5000 falsi
+            // positivi del LIKE (email citata nel testo di altri invii) la
+            // scansione rileggeva sempre le stesse righe e non terminava mai.
+            // Pagina 1 = nuova richiesta: il cursore riparte da 0.
+            $cursor_key = 'dbfb_eraser_' . md5($email_address);
+            if ($page === 1) {
+                delete_transient($cursor_key);
+                $after_id = 0;
+            } else {
+                $after_id = (int) get_transient($cursor_key);
+            }
             $batches  = 0;
             do {
                 $matches = self::find_submissions_by_email($email_address, 1, $after_id);
@@ -271,6 +326,20 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                     if ($deleted) $items_removed++;
                 }
             } while (!$matches['done'] && ++$batches < self::ERASER_MAX_BATCHES);
+
+            $done = (bool) $matches['done'];
+            // Rete di sicurezza: se il transient del cursore venisse perso
+            // (object cache svuotata) la scansione ripartirebbe da 0; oltre
+            // ERASER_MAX_PAGES chiamate chiudiamo comunque la richiesta.
+            if (!$done && $page >= self::ERASER_MAX_PAGES) {
+                $done = true;
+                $messages[] = __('Scansione interrotta per limite di sicurezza: ripeti la richiesta di cancellazione per completarla.', 'db-form-builder');
+            }
+            if ($done) {
+                delete_transient($cursor_key);
+            } else {
+                set_transient($cursor_key, (int) $after_id, HOUR_IN_SECONDS);
+            }
 
             if ($items_removed > 0) {
                 $messages[] = sprintf(
@@ -290,7 +359,7 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                 'items_removed'  => $items_removed,
                 'items_retained' => 0, // Cancelliamo tutto quello che troviamo: niente retention selettiva.
                 'messages'       => $messages,
-                'done'           => $matches['done'],
+                'done'           => $done,
             );
         }
 
@@ -337,10 +406,16 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
             // e percenti nell'email che diventerebbero wildcard.
             $like = '%' . $wpdb->esc_like($email) . '%';
 
+            // 2.13.0: include le colonne della prova del consenso (export art. 15).
+            // Lo schema è garantito da maybe_upgrade_schema() (v4+).
+            $columns = 'id, form_id, data, ip_address, ip_hash, submitted_at, '
+                     . 'gdpr_consent_given, gdpr_consent_text, gdpr_consent_timestamp, '
+                     . 'gdpr_consent_privacy_url, gdpr_consent_policy_version';
+
             if ($after_id !== null) {
                 // Paginazione a cursore (eraser): stabile anche mentre si cancella.
                 $candidates = $wpdb->get_results($wpdb->prepare(
-                    "SELECT id, form_id, data, ip_address, ip_hash, submitted_at
+                    "SELECT $columns
                      FROM $table
                      WHERE data LIKE %s AND id > %d
                      ORDER BY id ASC
@@ -349,7 +424,7 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                 ));
             } else {
                 $candidates = $wpdb->get_results($wpdb->prepare(
-                    "SELECT id, form_id, data, ip_address, ip_hash, submitted_at
+                    "SELECT $columns
                      FROM $table
                      WHERE data LIKE %s
                      ORDER BY id ASC
@@ -446,9 +521,11 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
             if (!is_array($value))  return (string) $value;
 
             // File singolo: oggetto con chiavi 'url'/'name'/'size'.
+            // 2.13.0: la cartella allegati nega l'accesso diretto, quindi
+            // l'URL non è più utile all'interessato: esportiamo il nome del
+            // file e indichiamo che una copia è disponibile su richiesta.
             if (isset($value['url'])) {
-                $name = $value['name'] ?? basename($value['url']);
-                return $name . ' (' . $value['url'] . ')';
+                return self::format_file_for_export($value);
             }
 
             // Array di valori: può essere checkbox multipli (stringhe)
@@ -456,13 +533,27 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
             $parts = array();
             foreach ($value as $item) {
                 if (is_array($item) && isset($item['url'])) {
-                    $name = $item['name'] ?? basename($item['url']);
-                    $parts[] = $name . ' (' . $item['url'] . ')';
+                    $parts[] = self::format_file_for_export($item);
                 } elseif (is_scalar($item)) {
                     $parts[] = (string) $item;
                 }
             }
             return implode(', ', $parts);
+        }
+
+        /**
+         * Descrizione di un allegato per l'export DSAR (2.13.0).
+         *
+         * @param array $file Entry del campo file.
+         * @return string
+         */
+        private static function format_file_for_export($file) {
+            $name = $file['name'] ?? basename((string) $file['url']);
+            return sprintf(
+                /* translators: %s: nome del file allegato */
+                __('%s (allegato conservato in area protetta del sito; una copia può essere richiesta al titolare del trattamento)', 'db-form-builder'),
+                $name
+            );
         }
     }
 }

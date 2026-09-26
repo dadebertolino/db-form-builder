@@ -3,7 +3,19 @@ if (!defined('ABSPATH')) exit;
 
 class DBFB_Email {
 
-    public static function prepare_placeholders($form, $fields, $data, $settings) {
+    /**
+     * Segnaposto per le email.
+     *
+     * @param WP_Post $form
+     * @param array   $fields
+     * @param array   $data
+     * @param array   $settings
+     * @param string  $audience 'admin' (default: allegati con link di download
+     *                          admin) o 'user' (email di conferma a chi ha
+     *                          inviato: solo il nome del file, 2.13.0).
+     * @return array
+     */
+    public static function prepare_placeholders($form, $fields, $data, $settings, $audience = 'admin') {
         // Privacy by design (2.3.0): il placeholder {ip} nelle email rispetta
         // la modalità di storage configurata. In 'none' è vuoto, in 'hashed'
         // è l'hash, in 'full' è l'IP in chiaro. Coerente con quanto salvato
@@ -44,14 +56,23 @@ class DBFB_Email {
             if ($field['type'] === 'file' && !empty($value)) {
                 if (is_array($value)) {
                     // Multiple files or single file object
+                    // 2.13.0: niente URL pubblico (la cartella allegati nega
+                    // l'accesso diretto): link al download admin, che richiede
+                    // login e capability. A chi ha inviato il form il link
+                    // non servirebbe (niente login admin): solo il nome.
+                    $with_link  = ($audience !== 'user');
+                    $file_label = function ($f) use ($with_link) {
+                        if (!is_array($f)) return (string) $f;
+                        if (!$with_link) return (string) ($f['name'] ?? '');
+                        $link = DBFB_Submissions::attachment_download_url($f, false);
+                        return ($f['name'] ?? '') . ($link !== '' ? ' (' . $link . ')' : '');
+                    };
                     if (isset($value['name'])) {
                         // Single file
-                        $value = $value['name'] . ' (' . $value['url'] . ')';
+                        $value = $file_label($value);
                     } else {
                         // Multiple files
-                        $file_names = array_map(function ($f) {
-                            return is_array($f) ? $f['name'] . ' (' . $f['url'] . ')' : $f;
-                        }, $value);
+                        $file_names = array_map($file_label, $value);
                         $value = implode(', ', $file_names);
                     }
                 }
@@ -209,7 +230,13 @@ class DBFB_Email {
             }
         }
 
-        $placeholders = self::prepare_placeholders($form, $form_fields, $sample_data, $form_settings);
+        $placeholders = self::prepare_placeholders(
+            $form,
+            $form_fields,
+            $sample_data,
+            $form_settings,
+            $email_type === 'confirmation' ? 'user' : 'admin'
+        );
         $headers = self::get_headers();
 
         if ($email_type === 'confirmation') {

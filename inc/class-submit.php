@@ -3,8 +3,23 @@ if (!defined('ABSPATH')) exit;
 
 class DBFB_Submit {
 
+    /**
+     * Versione della regola di protezione di uploads/dbfb/ (2.13.0).
+     * Scritta come marcatore nel .htaccess e nell'option dbfb_uploads_protection.
+     */
+    const UPLOADS_PROTECTION_VERSION = '2.13.0';
+
+    /**
+     * Rate limit globale per IP delle richieste anonime (2.13.0).
+     * Filtrabili via dbfb_submit_rate_limit / dbfb_submit_rate_window.
+     */
+    const SUBMIT_RATE_LIMIT  = 20;
+    const SUBMIT_RATE_WINDOW = 600;
+
     public static function ajax_submit_form() {
-        check_ajax_referer('dbfb_submit_nonce', 'nonce');
+        // 2.13.0: nonce solo per gli utenti loggati; per gli anonimi controllo
+        // di origine + rate limit (vedi verify_submit_request()).
+        self::verify_submit_request();
 
         $form_id = intval($_POST['form_id'] ?? 0);
         $form_data = json_decode(stripslashes($_POST['data'] ?? '{}'), true);
@@ -14,9 +29,11 @@ class DBFB_Submit {
             wp_send_json_error(['message' => 'Dati non validi']);
         }
 
+        // 2.13.0: accettiamo solo form del plugin e pubblicati. Prima un ID
+        // qualsiasi (post, pagina, bozza di form) veniva accettato.
         $form = get_post($form_id);
-        if (!$form) {
-            wp_send_json_error(['message' => 'Form non trovato']);
+        if (!$form || $form->post_type !== 'dbfb_form' || $form->post_status !== 'publish') {
+            wp_send_json_error(['message' => __('Form non trovato', 'db-form-builder')]);
         }
 
         $form_fields = get_post_meta($form_id, '_dbfb_fields', true) ?: [];
@@ -55,20 +72,14 @@ class DBFB_Submit {
             }
         }
 
-        // reCAPTCHA (2.11.2): distinguiamo "configurato" da "attivo per questo
-        // visitatore". Se è configurato ma il consent gate lo ha disattivato,
-        // il server non può pretendere il token (l'utente legittimo non ha
-        // mai visto il widget), ma un bot potrebbe omettere il cookie di
-        // consenso proprio per saltarlo: in quel caso il rate limit diventa
-        // obbligatorio, anche se non abilitato nelle impostazioni del form.
-        $captcha_active     = DB_Form_Builder::should_load_recaptcha($form_settings);
-        $captcha_configured = !empty($form_settings['enable_captcha'])
-            && !empty($global_settings['recaptcha_site_key'])
-            && !empty($global_settings['recaptcha_secret_key']);
-        $captcha_fallback   = $captcha_configured && !$captcha_active;
+        // reCAPTCHA (2.13.0): "attivo per il form" dipende solo dalla
+        // configurazione (form + chiavi + Hard Privacy), mai dal visitatore.
+        // Il consenso viene gestito lato client: senza consenso lo script
+        // Google non viene caricato e il client non può produrre un token.
+        $captcha_enabled = DB_Form_Builder::is_recaptcha_enabled_for_form($form_settings);
 
         // Rate limiting
-        if (!empty($form_settings['rate_limit_enabled']) || $captcha_fallback) {
+        if (!empty($form_settings['rate_limit_enabled'])) {
             $ip = DB_Form_Builder::get_client_ip();
             $max_submissions = intval($form_settings['rate_limit_max'] ?? 5);
             $window_minutes = intval($form_settings['rate_limit_window'] ?? 60);
@@ -139,16 +150,24 @@ class DBFB_Submit {
         // Else: né enable_gdpr né intentional → tutti i campi NULL =
         // "consenso non documentato (potenzialmente non conforme)".
 
-        // reCAPTCHA — verifichiamo SOLO se il consent gate (2.3.0) ha
-        // permesso di caricare lo script lato frontend. Se il gate ha
-        // bloccato il caricamento, il client non avrà mai ricevuto il widget
-        // né potuto produrre un token: pretenderlo qui bloccherebbe
-        // utenti legittimi senza colpa.
-        //
-        // Le difese di base (honeypot + rate limit) restano sempre attive
-        // sopra, quindi il form è comunque protetto da bot rudimentali
-        // anche senza reCAPTCHA.
-        if ($captcha_active) {
+        // reCAPTCHA (2.13.0). Se è attivo per il form il token è SEMPRE
+        // richiesto. Scelta documentata: quando manca il token e il consent
+        // gate è attivo (il visitatore non ha dato il consenso alla categoria
+        // richiesta, quindi lo script Google non è mai stato caricato)
+        // rifiutiamo con un messaggio esplicito, coerente con il placeholder
+        // mostrato nel form. Accettare invii senza token permetteva a un bot
+        // di saltare la verifica semplicemente omettendo il cookie di
+        // consenso; honeypot e rate limit restano comunque attivi a monte.
+        if ($captcha_enabled) {
+            if ($recaptcha_token === '') {
+                $gate = DB_Form_Builder::recaptcha_consent_gate();
+                wp_send_json_error([
+                    'code'    => $gate['gated'] ? 'recaptcha_consent' : 'recaptcha_missing',
+                    'message' => $gate['gated']
+                        ? __('Per inviare il modulo accetta i cookie necessari alla verifica anti-spam.', 'db-form-builder')
+                        : __('Verifica anti-spam non completata. Ricarica la pagina e riprova.', 'db-form-builder'),
+                ]);
+            }
             if (!self::verify_recaptcha($recaptcha_token, $global_settings['recaptcha_secret_key'])) {
                 wp_send_json_error(['message' => __('Verifica anti-spam fallita. Riprova.', 'db-form-builder')]);
             }
@@ -276,7 +295,10 @@ class DBFB_Submit {
         }
 
         if (!empty($form_settings['send_confirmation']) && $user_email) {
-            DBFB_Email::send_confirmation($user_email, $form_settings, $placeholders);
+            // 2.13.0: nella conferma all'utente gli allegati compaiono solo
+            // per nome (il link di download è riservato all'admin).
+            $user_placeholders = DBFB_Email::prepare_placeholders($form, $form_fields, $form_data, $form_settings, 'user');
+            DBFB_Email::send_confirmation($user_email, $form_settings, $user_placeholders);
         }
 
         if (!empty($form_settings['send_admin_notification']) && !empty($form_settings['admin_email'])) {
@@ -302,6 +324,111 @@ class DBFB_Submit {
         wp_send_json_success([
             'message' => $form_settings['success_message'] ?? __('Form inviato con successo!', 'db-form-builder')
         ]);
+    }
+
+    /**
+     * Verifica l'origine della richiesta di invio (2.13.0).
+     *
+     * Utenti loggati: nonce (le loro pagine non sono cachate e il nonce è
+     * legato alla sessione).
+     *
+     * Visitatori anonimi: niente nonce. Con una cache di pagina (WP Rocket,
+     * LiteSpeed, Cloudflare APO, ...) il nonce stampato nell'HTML scade dopo
+     * 12–24h e da quel momento ogni invio veniva rifiutato con 403. Per un
+     * anonimo il nonce è identico per tutti i visitatori, quindi non protegge
+     * nulla: lo sostituiamo con un controllo di origine (Origin, fallback
+     * Referer, dello stesso host del sito) e un rate limit globale per IP
+     * (hash salato, mai in chiaro). Il rate limit per form resta attivo a valle.
+     *
+     * Pattern di riferimento: DBCM_Consent_API::verify_consent_request()
+     * (DB Cookie Manager 3.7.1).
+     *
+     * @return void Termina con wp_send_json_error() se la richiesta non è valida.
+     */
+    private static function verify_submit_request() {
+        if (is_user_logged_in()) {
+            check_ajax_referer('dbfb_submit_nonce', 'nonce');
+            return;
+        }
+
+        // phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- confrontati solo come host via wp_parse_url().
+        $origin = '';
+        if (!empty($_SERVER['HTTP_ORIGIN'])) {
+            $origin = wp_unslash($_SERVER['HTTP_ORIGIN']);
+        } elseif (!empty($_SERVER['HTTP_REFERER'])) {
+            $origin = wp_unslash($_SERVER['HTTP_REFERER']);
+        }
+        // phpcs:enable
+
+        if (!self::origin_matches($origin, array(home_url(), site_url()))) {
+            wp_send_json_error(array(
+                'code'    => 'bad_origin',
+                'message' => __('Richiesta non valida: ricarica la pagina e riprova.', 'db-form-builder'),
+            ), 403);
+        }
+
+        if (self::is_submit_rate_limited()) {
+            wp_send_json_error(array(
+                'code'    => 'rate_limited',
+                'message' => __('Troppi invii in poco tempo. Riprova tra qualche minuto.', 'db-form-builder'),
+            ), 429);
+        }
+    }
+
+    /**
+     * True se l'host di $origin coincide con l'host di uno degli URL del sito.
+     *
+     * Confronto sul solo host (case-insensitive): schema e porta possono
+     * differire dietro proxy. Origin vuoto o 'null' → false.
+     *
+     * @param string $origin    Valore dell'header Origin o Referer.
+     * @param array  $site_urls URL del sito (home_url, site_url).
+     * @return bool
+     */
+    public static function origin_matches($origin, $site_urls) {
+        $origin = is_string($origin) ? trim($origin) : '';
+        if ($origin === '' || $origin === 'null') {
+            return false;
+        }
+        $host = wp_parse_url($origin, PHP_URL_HOST);
+        if (!is_string($host) || $host === '') {
+            return false;
+        }
+        $host = strtolower($host);
+        foreach ((array) $site_urls as $url) {
+            $site_host = wp_parse_url((string) $url, PHP_URL_HOST);
+            if (is_string($site_host) && strtolower($site_host) === $host) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Rate limit globale per IP sugli invii anonimi (2.13.0).
+     *
+     * Chiave = hash salato dell'IP (mai in chiaro). Prefisso dbfb_rate_ così
+     * i transient vengono ripuliti anche da uninstall.php.
+     *
+     * @return bool True se la richiesta supera il limite.
+     */
+    private static function is_submit_rate_limited() {
+        $ip = DB_Form_Builder::get_client_ip();
+        if ($ip === '') {
+            return false;
+        }
+        $limit  = (int) apply_filters('dbfb_submit_rate_limit', self::SUBMIT_RATE_LIMIT);
+        $window = (int) apply_filters('dbfb_submit_rate_window', self::SUBMIT_RATE_WINDOW);
+        if ($limit <= 0 || $window <= 0) {
+            return false;
+        }
+        $key   = 'dbfb_rate_g_' . substr(DB_Form_Builder::hash_ip($ip), 0, 32);
+        $count = (int) get_transient($key);
+        if ($count >= $limit) {
+            return true;
+        }
+        set_transient($key, $count + 1, $window);
+        return false;
     }
 
     /**
@@ -596,8 +723,11 @@ class DBFB_Submit {
                 $upload_dir = self::get_upload_dir($form_id);
                 if (is_wp_error($upload_dir)) return $upload_dir;
 
-                // Generate unique filename
-                $safe_name = wp_unique_filename($upload_dir['path'], sanitize_file_name($names[$i]));
+                // Nome file non prevedibile (2.13.0): prefisso casuale di 24
+                // caratteri + nome sanitizzato. Seconda linea di difesa oltre
+                // al deny all della cartella (che Nginx non legge).
+                $random_prefix = wp_generate_password(24, false, false);
+                $safe_name = wp_unique_filename($upload_dir['path'], $random_prefix . '-' . $safe_filename);
                 $dest_path = $upload_dir['path'] . '/' . $safe_name;
 
                 // Move file
@@ -667,37 +797,51 @@ class DBFB_Submit {
     }
 
     /**
-     * Scrive/aggiorna i file di protezione nella root uploads/dbfb/ (2.11.1).
+     * Scrive/aggiorna i file di protezione nella root uploads/dbfb/ (2.11.1, 2.13.0).
      *
-     * .htaccess: nega esecuzione e download di qualsiasi contenuto attivo o
-     * ambiguo (script, .svg — vettore XSS, .html/.htm). Copre Apache e
-     * LiteSpeed. Su Nginx l'.htaccess è ignorato: la protezione reale lì è
-     * la validazione MIME lato PHP (process_file_uploads) più la config del
-     * server; l'admin viene avvisato via dbfb_maybe_warn_nginx_uploads.
+     * 2.13.0: .htaccess con "deny all" su TUTTA la cartella. Gli allegati non
+     * sono più raggiungibili con un URL pubblico: si scaricano solo dall'admin
+     * tramite admin-post.php?action=dbfb_download (capability + nonce, vedi
+     * DBFB_Submissions::handle_attachment_download()). Sintassi per Apache 2.4
+     * (mod_authz_core) e 2.2 (Order/Deny) in blocchi IfModule, così non
+     * genera errori 500 su nessuna delle due. Niente direttiva Options: con
+     * AllowOverride restrittivo causerebbe un 500.
      *
-     * Idempotente: riscrive solo se il file manca o è la versione vecchia,
-     * così le installazioni pre-2.11.1 ricevono la regola rafforzata.
+     * Su Nginx l'.htaccess è ignorato: la protezione lì è il nome file con
+     * prefisso casuale di 24 caratteri più la regola da aggiungere alla config
+     * del server (vedi README e admin notice).
+     *
+     * Idempotente: riscrive solo se il file manca o non contiene il marcatore
+     * della versione corrente della regola.
+     *
+     * @param string $dbfb_root Path assoluto di uploads/dbfb.
+     * @return bool True se la protezione risulta applicata.
      */
-    private static function harden_upload_root($dbfb_root) {
-        if (!is_dir($dbfb_root)) return;
+    public static function harden_upload_root($dbfb_root) {
+        if (!is_dir($dbfb_root)) return false;
 
         $htaccess = $dbfb_root . '/.htaccess';
-        $desired  = "# DB Form Builder - Security (2.11.1)\n"
-                  . "<FilesMatch \"\\.(php|phtml|php[0-9]|phps|phar|cgi|pl|py|sh|bat|htm|html|svg|xml)$\">\n"
+        $desired  = '# DB Form Builder - Security (' . self::UPLOADS_PROTECTION_VERSION . ")\n"
+                  . "# Accesso diretto negato: gli allegati si scaricano solo dall'admin.\n"
+                  . "<IfModule mod_authz_core.c>\n"
                   . "    Require all denied\n"
+                  . "</IfModule>\n"
+                  . "<IfModule !mod_authz_core.c>\n"
+                  . "    Order allow,deny\n"
                   . "    Deny from all\n"
-                  . "</FilesMatch>\n"
-                  . "Options -ExecCGI -Indexes\n"
-                  . "AddType text/plain .php .phtml .phar .cgi .pl .py .sh\n";
+                  . "</IfModule>\n";
 
-        $current = file_exists($htaccess) ? @file_get_contents($htaccess) : '';
-        if (strpos($current, '2.11.1') === false) {
-            @file_put_contents($htaccess, $desired);
+        $current = file_exists($htaccess) ? (string) @file_get_contents($htaccess) : '';
+        $ok = true;
+        if (strpos($current, 'Security (' . self::UPLOADS_PROTECTION_VERSION . ')') === false) {
+            $ok = (false !== @file_put_contents($htaccess, $desired));
         }
 
         $index = $dbfb_root . '/index.php';
         if (!file_exists($index)) {
             @file_put_contents($index, '<?php // Silence is golden.');
         }
+
+        return $ok;
     }
 }

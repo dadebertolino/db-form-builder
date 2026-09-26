@@ -18,6 +18,13 @@ class DB_Form_Builder {
         add_action('admin_init', [$this, 'handle_form_actions']);
         add_action('admin_init', [__CLASS__, 'maybe_upgrade_schema']);
         add_action('admin_init', [__CLASS__, 'schedule_cleanup_cron']);
+        // 2.13.0: anche il cron delle deliveries va ri-pianificato in modo
+        // idempotente (prima solo in attivazione: mu-plugin, WP-CLI o
+        // aggiornamenti via upload lo lasciavano non pianificato).
+        add_action('admin_init', [__CLASS__, 'schedule_deliveries_cleanup_cron']);
+        // 2.13.0: protezione della cartella allegati (deny all) applicata
+        // anche alle installazioni esistenti, senza attendere un nuovo upload.
+        add_action('admin_init', [__CLASS__, 'maybe_protect_uploads']);
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_notices', [__CLASS__, 'maybe_warn_nginx_uploads']);
         add_action('admin_init', [__CLASS__, 'handle_nginx_notice_dismiss']);
@@ -44,6 +51,14 @@ class DB_Form_Builder {
 
         // Submissions
         add_action('wp_ajax_dbfb_export_csv', ['DBFB_Submissions', 'ajax_export_csv']);
+        // 2.13.0: download allegati solo via admin (capability + nonce).
+        // Il nopriv rimanda al login invece di restituire una pagina vuota.
+        add_action('admin_post_dbfb_download', ['DBFB_Submissions', 'handle_attachment_download']);
+        add_action('admin_post_nopriv_dbfb_download', ['DBFB_Submissions', 'handle_attachment_download']);
+        // 2.13.0: link firmati e a scadenza per gli allegati nei webhook
+        // (i destinatari non hanno login). Priv + nopriv.
+        add_action('admin_post_dbfb_file', ['DBFB_Submissions', 'handle_signed_file_download']);
+        add_action('admin_post_nopriv_dbfb_file', ['DBFB_Submissions', 'handle_signed_file_download']);
 
         // Email
         add_action('wp_ajax_dbfb_send_test_email', ['DBFB_Email', 'ajax_send_test_email']);
@@ -97,6 +112,29 @@ class DB_Form_Builder {
         self::maybe_upgrade_schema();
         self::schedule_cleanup_cron();
         self::schedule_deliveries_cleanup_cron();
+        self::maybe_protect_uploads();
+    }
+
+    /**
+     * Applica la protezione della cartella uploads/dbfb/ (2.13.0).
+     *
+     * Idempotente e leggera: l'option fa da marcatore di versione, così il
+     * controllo su disco gira una sola volta per versione della regola e non
+     * a ogni caricamento dell'admin. Se la cartella non esiste ancora non fa
+     * nulla: verrà protetta al primo upload (DBFB_Submit::get_upload_dir()).
+     */
+    public static function maybe_protect_uploads() {
+        if (get_option('dbfb_uploads_protection') === DBFB_Submit::UPLOADS_PROTECTION_VERSION) {
+            return;
+        }
+        $upload = wp_upload_dir();
+        $root   = trailingslashit($upload['basedir']) . 'dbfb';
+        if (!is_dir($root)) {
+            return;
+        }
+        if (DBFB_Submit::harden_upload_root($root)) {
+            update_option('dbfb_uploads_protection', DBFB_Submit::UPLOADS_PROTECTION_VERSION, false);
+        }
     }
 
     /**
@@ -277,6 +315,12 @@ class DB_Form_Builder {
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
         // Tabella submissions (storica).
+        // 2.13.0: la versione dello schema si marca SOLO se la tabella viene
+        // creata qui da zero (quindi già con lo schema più recente). Se esiste
+        // già, le colonne mancanti le aggiunge maybe_upgrade_schema(): marcare
+        // comunque la versione faceva saltare le migrazioni alla riattivazione
+        // e gli INSERT con le colonne gdpr_consent_* fallivano in silenzio.
+        $created_fresh = false;
         $table = $wpdb->prefix . 'dbfb_submissions';
         if ($wpdb->get_var("SHOW TABLES LIKE '$table'") !== $table) {
             $sql = "CREATE TABLE $table (
@@ -297,6 +341,7 @@ class DB_Form_Builder {
                 KEY gdpr_consent_policy_version (gdpr_consent_policy_version)
             ) $charset_collate;";
             dbDelta($sql);
+            $created_fresh = ($wpdb->get_var("SHOW TABLES LIKE '$table'") === $table);
         }
 
         // Tabella webhook deliveries (2.7.0+).
@@ -326,8 +371,11 @@ class DB_Form_Builder {
             dbDelta($sql_dlv);
         }
 
-        // Marca lo schema come aggiornato all'ultima versione.
-        update_option('dbfb_schema_version', self::SCHEMA_VERSION);
+        // Marca lo schema come aggiornato all'ultima versione solo per una
+        // tabella appena creata (vedi nota sopra).
+        if ($created_fresh) {
+            update_option('dbfb_schema_version', self::SCHEMA_VERSION);
+        }
     }
 
     /**
@@ -338,13 +386,16 @@ class DB_Form_Builder {
      * admin_init e in attivazione, quindi anche installazioni in
      * mu-plugins o WP-CLI bulk hanno lo schema corretto.
      */
-    const SCHEMA_VERSION = 4;
+    const SCHEMA_VERSION = 5;
 
     /**
      * Aggiorna lo schema esistente da versioni precedenti.
      *
      * Migrazioni applicate:
      *  - v1 → v2 (Form Builder 2.3.0): aggiunge ip_hash + indice submitted_at
+     *  - v2 → v3 (2.7.0): tabella webhook deliveries
+     *  - v3 → v4 (2.11.0): colonne prova del consenso gdpr_consent_*
+     *  - v4 → v5 (2.13.0): riesecuzione idempotente di tutti i passi (riparazione)
      *
      * Le submission esistenti mantengono il loro ip_address in chiaro
      * (backward compat). Per le nuove submission, il salvataggio popolerà
@@ -360,14 +411,24 @@ class DB_Form_Builder {
         global $wpdb;
         $table = $wpdb->prefix . 'dbfb_submissions';
 
-        // Se la tabella non esiste ancora (mai attivato), maybe_create_table
-        // la creerà già con lo schema più recente.
+        // Se la tabella non esiste ancora (mu-plugin, attivazione saltata,
+        // tabella cancellata a mano) la creiamo qui già con lo schema più
+        // recente: maybe_create_table() marca anche la versione (2.13.0).
         if ($wpdb->get_var("SHOW TABLES LIKE '$table'") !== $table) {
+            self::maybe_create_table();
             return;
         }
 
+        // v4 → v5 (Form Builder 2.13.0): riparazione. Fino alla 2.12.0
+        // maybe_create_table() marcava lo schema a v4 anche su tabelle
+        // esistenti non migrate, quindi alcune installazioni risultano "v4"
+        // senza le colonne gdpr_consent_* (INSERT falliti in silenzio). Tutti
+        // i passi qui sotto sono idempotenti (controllano l'esistenza prima di
+        // agire): con $repair li rieseguiamo una volta su ogni installazione.
+        $repair = ($current < 5);
+
         // v1 → v2: aggiunge ip_hash e indice submitted_at.
-        if ($current < 2) {
+        if ($current < 2 || $repair) {
             $col = $wpdb->get_var("SHOW COLUMNS FROM $table LIKE 'ip_hash'");
             if (!$col) {
                 $wpdb->query("ALTER TABLE $table ADD COLUMN ip_hash varchar(64) AFTER ip_address");
@@ -383,7 +444,7 @@ class DB_Form_Builder {
         // v2 → v3 (Form Builder 2.7.0): crea la tabella webhook_deliveries.
         // maybe_create_table è idempotente e già controlla l'esistenza,
         // quindi possiamo richiamarlo senza rischio.
-        if ($current < 3) {
+        if ($current < 3 || $repair) {
             self::maybe_create_table();
         }
 
@@ -391,7 +452,7 @@ class DB_Form_Builder {
         // alla tabella submissions per soddisfare l'art. 7.1 GDPR (prova
         // del consenso). Le righe pre-esistenti hanno gdpr_consent_given=NULL,
         // segnalate nella UI come "consenso non documentato (versione precedente)".
-        if ($current < 4) {
+        if ($current < 4 || $repair) {
             $cols_to_add = array(
                 'gdpr_consent_given'           => 'tinyint(1) DEFAULT NULL AFTER ip_hash',
                 'gdpr_consent_text'            => 'text AFTER gdpr_consent_given',
@@ -447,13 +508,17 @@ class DB_Form_Builder {
      * difesa primaria resta la validazione MIME lato PHP; questo avviso
      * ricorda all'admin di aggiungere la regola equivalente nella config
      * del server. Dismissibile per-utente.
+     *
+     * 2.13.0: la regola diventa "deny all" sull'intera cartella (download
+     * solo via admin). La chiave del dismiss è cambiata così l'avviso
+     * ricompare una volta a chi lo aveva chiuso con la regola precedente.
      */
     public static function maybe_warn_nginx_uploads() {
         if (!current_user_can('manage_options')) return;
         $screen = function_exists('get_current_screen') ? get_current_screen() : null;
         if (!$screen || strpos($screen->id, 'dbfb') === false) return;
 
-        if (get_user_meta(get_current_user_id(), 'dbfb_dismissed_nginx_notice', true)) return;
+        if (get_user_meta(get_current_user_id(), 'dbfb_dismissed_nginx_notice_213', true)) return;
 
         $server = isset($_SERVER['SERVER_SOFTWARE']) ? $_SERVER['SERVER_SOFTWARE'] : '';
         $is_apache = (stripos($server, 'apache') !== false || stripos($server, 'litespeed') !== false);
@@ -467,8 +532,8 @@ class DB_Form_Builder {
         echo '<div class="notice notice-warning is-dismissible"><p><strong>'
             . esc_html__('DB Form Builder — protezione upload su Nginx', 'db-form-builder')
             . '</strong><br>'
-            . esc_html__('Gli allegati dei form sono in una cartella protetta da .htaccess, ignorato da Nginx. Il contenuto dei file è comunque validato lato server, ma per una difesa esplicita aggiungi alla config del sito:', 'db-form-builder')
-            . '</p><p><code style="display:block;padding:8px;user-select:all;">location ~* /uploads/dbfb/.*\.(php|phtml|phar|cgi|pl|py|sh|svg|html?)$ { deny all; }</code></p>'
+            . esc_html__('Gli allegati dei form sono in una cartella con accesso diretto negato via .htaccess, che Nginx ignora. I nomi dei file hanno un prefisso casuale non indovinabile e si scaricano solo dall\'admin, ma per bloccare del tutto l\'accesso diretto aggiungi alla config del sito:', 'db-form-builder')
+            . '</p><p><code style="display:block;padding:8px;user-select:all;">location ^~ /wp-content/uploads/dbfb/ { deny all; }</code></p>'
             . '<p><a href="' . esc_url($dismiss_url) . '" class="button button-secondary">' . esc_html__('Ho capito, non mostrare più', 'db-form-builder') . '</a></p></div>';
     }
 
@@ -479,7 +544,7 @@ class DB_Form_Builder {
         if (!isset($_GET['dbfb_dismiss_nginx'])) return;
         if (!current_user_can('manage_options')) return;
         if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'dbfb_dismiss_nginx')) return;
-        update_user_meta(get_current_user_id(), 'dbfb_dismissed_nginx_notice', 1);
+        update_user_meta(get_current_user_id(), 'dbfb_dismissed_nginx_notice_213', 1);
     }
 
     public function admin_menu() {
@@ -585,7 +650,9 @@ class DB_Form_Builder {
 
         wp_enqueue_media();
         // 2.12.0: wp-color-picker per i colori del frontend (Aspetto).
-        wp_enqueue_style('dbfb-admin', DBFB_PLUGIN_URL . 'assets/css/admin.css', ['wp-color-picker'], DBFB_VERSION);
+        // 2.13.0: design system condiviso dei plugin DB come dipendenza.
+        wp_register_style('db-admin-ui', DBFB_PLUGIN_URL . 'assets/css/db-admin-ui.css', [], DBFB_VERSION);
+        wp_enqueue_style('dbfb-admin', DBFB_PLUGIN_URL . 'assets/css/admin.css', ['db-admin-ui', 'wp-color-picker'], DBFB_VERSION);
         wp_enqueue_script('sortablejs', 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js', [], '1.15.0', true);
         wp_enqueue_script('dbfb-admin', DBFB_PLUGIN_URL . 'assets/js/admin.js', ['jquery', 'sortablejs', 'wp-color-picker'], DBFB_VERSION, true);
 
@@ -620,18 +687,22 @@ class DB_Form_Builder {
         wp_enqueue_style('dbfb-frontend', DBFB_PLUGIN_URL . 'assets/css/frontend.css', [], DBFB_VERSION);
         wp_enqueue_script('dbfb-frontend', DBFB_PLUGIN_URL . 'assets/js/frontend.js', ['jquery'], DBFB_VERSION, true);
 
-        // Nota (2.3.0): l'enqueue di google-recaptcha è stato spostato a
-        // enqueue_form_dependencies(), chiamato solo durante il render dello
-        // shortcode. Questo permette a should_load_recaptcha() di valutare il
-        // consenso dell'utente PRIMA di richiedere lo script a Google. Lo
-        // script, anche se enqueued tardivamente, viene comunque emesso nel
-        // wp_footer (caricamento async).
+        // Nota (2.13.0): lo script Google reCAPTCHA NON viene più accodato
+        // lato server. Con una cache di pagina la decisione "consenso sì/no"
+        // presa al render veniva servita a tutti i visitatori. Ora il server
+        // emette sempre lo stesso markup e frontend.js carica api.js solo
+        // dopo il consenso (vedi recaptcha_client_config()).
 
         wp_localize_script('dbfb-frontend', 'dbfb', [
             'ajax_url' => admin_url('admin-ajax.php'),
+            // Nonce usato solo per gli utenti loggati (pagine non cachate):
+            // per gli anonimi il server verifica origine + rate limit (2.13.0).
             'nonce' => wp_create_nonce('dbfb_submit_nonce'),
             'recaptcha_site_key' => $global_settings['recaptcha_site_key'],
             'recaptcha_version' => $global_settings['recaptcha_version'] ?? 'v2',
+            // 2.13.0: configurazione del consent gate lato client. Tutti i
+            // valori dipendono dal sito, mai dal visitatore: cache-safe.
+            'recaptcha' => self::recaptcha_client_config(),
             // 2.12.0: stringhe dell'interfaccia, traducibili.
             'strings' => [
                 'file_type' => __('Formato non ammesso', 'db-form-builder'),
@@ -643,6 +714,12 @@ class DB_Form_Builder {
                 'generic_error' => __('Si è verificato un errore. Riprova.', 'db-form-builder'),
                 'recaptcha_error' => __('Errore reCAPTCHA. Ricarica la pagina e riprova.', 'db-form-builder'),
                 'recaptcha_required' => __('Completa la verifica "Non sono un robot"', 'db-form-builder'),
+                // 2.13.0: consent gate client-side ed errori espliciti del submit.
+                'recaptcha_consent' => __('Per inviare il modulo accetta i cookie necessari alla verifica anti-spam.', 'db-form-builder'),
+                'recaptcha_loading' => __('Verifica anti-spam in caricamento, riprova tra qualche istante.', 'db-form-builder'),
+                'bad_origin' => __('Richiesta non valida: ricarica la pagina e riprova.', 'db-form-builder'),
+                'rate_limited' => __('Troppi invii in poco tempo. Riprova tra qualche minuto.', 'db-form-builder'),
+                'session_expired' => __('Sessione scaduta: ricarica la pagina e riprova.', 'db-form-builder'),
                 'required' => __('Questo campo è obbligatorio', 'db-form-builder'),
                 /* translators: 1: passo corrente, 2: numero totale di passi */
                 'step_progress' => __('Passo %1$s di %2$s', 'db-form-builder'),
@@ -653,22 +730,113 @@ class DB_Form_Builder {
     /**
      * Enqueue lazy delle dipendenze esterne per uno specifico form (2.3.0).
      *
-     * Chiamato dal render dello shortcode/widget quando $form_settings è
-     * disponibile. Permette al consent gate di valutare se l'utente può
-     * caricare reCAPTCHA prima di emettere lo script verso Google.
+     * @deprecated 2.13.0 Lo script reCAPTCHA non viene più accodato lato
+     *             server: la decisione dipendeva dal consenso del visitatore
+     *             e finiva nella cache di pagina. Il caricamento avviene ora
+     *             in frontend.js dopo il consenso. Metodo mantenuto (no-op)
+     *             per compatibilità con eventuale codice esterno.
      *
      * @param array $form_settings Settings del form (post meta _dbfb_settings).
      */
     public static function enqueue_form_dependencies($form_settings) {
-        if (!self::should_load_recaptcha($form_settings)) {
-            return;
+        // Intenzionalmente vuoto (vedi @deprecated).
+    }
+
+    /**
+     * Configurazione del consent gate reCAPTCHA per frontend.js (2.13.0).
+     *
+     * Nessun valore dipende dal visitatore (niente cookie letti qui), quindi
+     * l'output è sicuro anche con cache di pagina:
+     *  - enabled:          chiavi configurate e Hard Privacy SEO non attivo
+     *  - consent_required: filter dbfb_recaptcha_consent_required
+     *  - category:         filter dbfb_recaptcha_category (default 'marketing')
+     *  - has_cmp:          esiste un consent manager (DB Cookie Manager o WP
+     *                      Consent API). Se false il client carica subito.
+     *
+     * @return array
+     */
+    public static function recaptcha_client_config() {
+        $gate = self::recaptcha_consent_gate();
+        return array(
+            'enabled'          => self::is_recaptcha_available(),
+            'consent_required' => $gate['consent_required'],
+            'category'         => $gate['category'],
+            'has_cmp'          => $gate['has_cmp'],
+            'gated'            => $gate['gated'],
+        );
+    }
+
+    /**
+     * Stato del consent gate reCAPTCHA a livello di sito (2.13.0).
+     *
+     * @return array {consent_required: bool, category: string, has_cmp: bool, gated: bool}
+     */
+    public static function recaptcha_consent_gate() {
+        $consent_required = (bool) apply_filters('dbfb_recaptcha_consent_required', true);
+        $category = sanitize_key((string) apply_filters('dbfb_recaptcha_category', 'marketing'));
+        if ($category === '') {
+            $category = 'marketing';
+        }
+        $has_cmp = class_exists('DBCM_Consent_API') || function_exists('wp_has_consent');
+        return array(
+            'consent_required' => $consent_required,
+            'category'         => $category,
+            'has_cmp'          => $has_cmp,
+            'gated'            => $consent_required && $has_cmp,
+        );
+    }
+
+    /**
+     * Etichetta leggibile della categoria di consenso, per i testi (2.13.0).
+     *
+     * @param string $category
+     * @return string Es. "di marketing", "statistici".
+     */
+    public static function consent_category_label($category) {
+        $labels = array(
+            'marketing'             => __('di marketing', 'db-form-builder'),
+            'statistics'            => __('statistici', 'db-form-builder'),
+            'statistics-anonymous'  => __('statistici anonimi', 'db-form-builder'),
+            'preferences'           => __('di preferenza', 'db-form-builder'),
+            'functional'            => __('funzionali', 'db-form-builder'),
+        );
+        return $labels[$category] ?? sprintf(
+            /* translators: %s: slug della categoria di consenso */
+            __('della categoria "%s"', 'db-form-builder'),
+            $category
+        );
+    }
+
+    /**
+     * reCAPTCHA è utilizzabile sul sito? (2.13.0)
+     *
+     * Chiavi configurate e Hard Privacy del DB SEO Manager non attivo.
+     * Indipendente dal visitatore.
+     *
+     * @return bool
+     */
+    public static function is_recaptcha_available() {
+        if (class_exists('DBSEO_Core')) {
+            $hard_privacy = DBSEO_Core::instance()->get('hard_privacy_enabled');
+            if (!empty($hard_privacy)) {
+                return false;
+            }
         }
         $global = self::get_global_settings();
-        $version = $global['recaptcha_version'] ?? 'v2';
-        $url = $version === 'v3'
-            ? 'https://www.google.com/recaptcha/api.js?render=' . esc_attr($global['recaptcha_site_key'])
-            : 'https://www.google.com/recaptcha/api.js';
-        wp_enqueue_script('google-recaptcha', $url, array(), null, true);
+        return !empty($global['recaptcha_site_key']) && !empty($global['recaptcha_secret_key']);
+    }
+
+    /**
+     * reCAPTCHA è attivo per questo form? (2.13.0)
+     *
+     * Indipendente dal visitatore: usato sia dal template (markup sempre
+     * uguale, cache-safe) sia dal submit (token richiesto).
+     *
+     * @param array $form_settings
+     * @return bool
+     */
+    public static function is_recaptcha_enabled_for_form($form_settings) {
+        return !empty($form_settings['enable_captcha']) && self::is_recaptcha_available();
     }
 
     // =========================================================
@@ -706,10 +874,6 @@ class DB_Form_Builder {
         $form_settings = get_post_meta($form_id, '_dbfb_settings', true) ?: [];
 
         if (empty($form_fields)) return '';
-
-        // Lazy enqueue delle dipendenze esterne (2.3.0): qui sappiamo quale
-        // form sta venendo renderizzato e possiamo applicare il consent gate.
-        self::enqueue_form_dependencies($form_settings);
 
         ob_start();
         include DBFB_PLUGIN_DIR . 'templates/frontend/form.php';
@@ -1351,63 +1515,30 @@ class DB_Form_Builder {
     /**
      * Decide se caricare lo script reCAPTCHA per un form (2.3.0).
      *
-     * Strategia in cascata:
-     *  1. Hard Privacy del DB SEO Manager attivo → false (skip totale,
-     *     coerente col senso di "Hard Privacy": niente integrazioni esterne).
-     *  2. Form non ha enable_captcha o chiavi globali mancanti → false
-     *     (recap stato attuale, niente cambiamenti).
-     *  3. Filter dbfb_recaptcha_consent_required (default true):
-     *     se l'admin lo disabilita esplicitamente, carichiamo sempre
-     *     (ipotesi: ha valutato i rischi GDPR e si è preso la
-     *     responsabilità di documentarli nell'informativa privacy).
-     *  4. Categoria consenso filtrabile via dbfb_recaptcha_category
-     *     (default 'marketing'): chi considera l'antispam un trattamento
-     *     funzionale può impostarlo a 'functional'.
-     *  5. Se c'è un consent manager (Cookie Manager DB o WP Consent API):
-     *     rispetta la scelta dell'utente.
-     *  6. Se NON c'è alcun consent manager: ritorna true (backward compat
-     *     con installazioni 2.2.0 che non hanno mai gating del consenso —
-     *     non rompiamo niente per chi non ha il Cookie Manager).
+     * @deprecated 2.13.0 Non più usato dal plugin: valuta il consenso del
+     *             visitatore lato server (cookie), quindi il risultato finiva
+     *             nella cache di pagina ed era sbagliato per gli altri
+     *             visitatori. Il gate ora gira in frontend.js; il template usa
+     *             is_recaptcha_enabled_for_form(). Mantenuto per compatibilità
+     *             con codice esterno.
      *
      * @param array $form_settings  Le settings del form (dal post meta).
-     * @return bool  true = carica reCAPTCHA, false = mostra placeholder.
+     * @return bool  true = il visitatore corrente può caricare reCAPTCHA.
      */
     public static function should_load_recaptcha($form_settings) {
-        // 1. Hard Privacy del SEO Manager
-        if (class_exists('DBSEO_Core')) {
-            $hard_privacy = DBSEO_Core::instance()->get('hard_privacy_enabled');
-            if (!empty($hard_privacy)) {
-                return false;
-            }
-        }
-
-        // 2. reCAPTCHA configurato per questo form?
-        if (empty($form_settings['enable_captcha'])) {
+        if (!self::is_recaptcha_enabled_for_form($form_settings)) {
             return false;
         }
-        $global = self::get_global_settings();
-        if (empty($global['recaptcha_site_key']) || empty($global['recaptcha_secret_key'])) {
-            return false;
+        $gate = self::recaptcha_consent_gate();
+        if (!$gate['gated']) {
+            return true;
         }
-
-        // 3. Consent gating richiesto?
-        $consent_required = (bool) apply_filters('dbfb_recaptcha_consent_required', true);
-        if (!$consent_required) {
-            return true; // admin ha esplicitamente disabilitato il gating
-        }
-
-        // 4. Quale categoria?
-        $category = (string) apply_filters('dbfb_recaptcha_category', 'marketing');
-
-        // 5. Consent manager disponibile?
         if (class_exists('DBCM_Consent_API')) {
-            return (bool) DBCM_Consent_API::has_consent($category);
+            return (bool) DBCM_Consent_API::has_consent($gate['category']);
         }
         if (function_exists('wp_has_consent')) {
-            return (bool) wp_has_consent($category);
+            return (bool) wp_has_consent($gate['category']);
         }
-
-        // 6. Backward compat: nessun consent manager → comportamento 2.2.0.
         return true;
     }
 }

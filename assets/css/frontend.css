@@ -665,3 +665,9 @@
         border: 2px solid ButtonText;
     }
 }
+
+/* 2.13.0: il consent gate reCAPTCHA usa l'attributo hidden; i temi che
+   impostano display sui gruppi non devono renderli visibili. */
+.dbfb-form [hidden] {
+    display: none !important;
+}

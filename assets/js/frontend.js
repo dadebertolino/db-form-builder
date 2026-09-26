@@ -20,6 +20,11 @@
         generic_error: 'Si è verificato un errore. Riprova.',
         recaptcha_error: 'Errore reCAPTCHA. Ricarica la pagina e riprova.',
         recaptcha_required: 'Completa la verifica "Non sono un robot"',
+        recaptcha_consent: 'Per inviare il modulo accetta i cookie necessari alla verifica anti-spam.',
+        recaptcha_loading: 'Verifica anti-spam in caricamento, riprova tra qualche istante.',
+        bad_origin: 'Richiesta non valida: ricarica la pagina e riprova.',
+        rate_limited: 'Troppi invii in poco tempo. Riprova tra qualche minuto.',
+        session_expired: 'Sessione scaduta: ricarica la pagina e riprova.',
         required: 'Questo campo è obbligatorio',
         step_progress: 'Passo %1$s di %2$s'
     }, (window.dbfb && window.dbfb.strings) || {});
@@ -313,6 +318,135 @@
     }
 
     // =========================================================
+    // reCAPTCHA — consent gate lato client (2.13.0)
+    // =========================================================
+    //
+    // Il server emette sempre lo stesso markup (cache-safe): qui decidiamo se
+    // caricare api.js di Google. Con consent manager attivo (DB Cookie
+    // Manager o WP Consent API) lo script parte solo dopo il consenso alla
+    // categoria configurata (filter PHP dbfb_recaptcha_category); senza
+    // consent manager, o con il gate disattivato, parte subito.
+
+    var rcConfig = $.extend({
+        enabled: false,
+        consent_required: true,
+        category: 'marketing',
+        has_cmp: false,
+        gated: false
+    }, (window.dbfb && window.dbfb.recaptcha) || {});
+    var rcSiteKey = (window.dbfb && window.dbfb.recaptcha_site_key) || '';
+    var rcVersion = (window.dbfb && window.dbfb.recaptcha_version) === 'v3' ? 'v3' : 'v2';
+    // Stato: 'idle' (non valutato), 'blocked', 'loading', 'ready', 'error'.
+    var rcState = 'idle';
+
+    function recaptchaForms() {
+        return $('.dbfb-form[data-dbfb-recaptcha]');
+    }
+
+    function hasRecaptchaConsent() {
+        if (!rcConfig.gated) return true;
+        if (window.DBCM && typeof window.DBCM.hasConsent === 'function') {
+            return !!window.DBCM.hasConsent(rcConfig.category);
+        }
+        if (typeof window.wp_has_consent === 'function') {
+            return !!window.wp_has_consent(rcConfig.category);
+        }
+        // Consent manager presente lato server ma API JS non ancora pronta
+        // (es. JS ritardato da un ottimizzatore): restiamo bloccati finché
+        // non arriva 'dbcm:ready' o un evento di consenso.
+        return false;
+    }
+
+    function renderRecaptchaWidgets() {
+        if (rcVersion !== 'v2' || typeof grecaptcha === 'undefined' || typeof grecaptcha.render !== 'function') return;
+        recaptchaForms().find('.dbfb-g-recaptcha').each(function() {
+            var $el = $(this);
+            if ($el.data('widget-id') !== undefined) return;
+            try {
+                $el.data('widget-id', grecaptcha.render(this, { sitekey: $el.data('sitekey') || rcSiteKey }));
+            } catch (err) {
+                console.warn('DBFB: render reCAPTCHA non riuscito', err);
+            }
+        });
+    }
+
+    // Callback globale richiamato da api.js (?onload=).
+    window.dbfbRecaptchaOnload = function() {
+        rcState = 'ready';
+        renderRecaptchaWidgets();
+    };
+
+    function loadRecaptcha() {
+        if (rcState === 'loading' || rcState === 'ready') return;
+        var $forms = recaptchaForms();
+        $forms.find('.dbfb-recaptcha-placeholder').prop('hidden', true);
+        $forms.find('.dbfb-recaptcha-notice').prop('hidden', false);
+        if (rcVersion === 'v2') $forms.find('.dbfb-recaptcha-container').prop('hidden', false);
+
+        rcState = 'loading';
+        var src = 'https://www.google.com/recaptcha/api.js?onload=dbfbRecaptchaOnload&render='
+            + (rcVersion === 'v3' ? encodeURIComponent(rcSiteKey) : 'explicit');
+        var script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.defer = true;
+        script.onerror = function() {
+            rcState = 'error';
+            console.warn('DBFB: impossibile caricare Google reCAPTCHA (rete o blocco del browser).');
+        };
+        document.head.appendChild(script);
+    }
+
+    function showRecaptchaBlocked() {
+        rcState = 'blocked';
+        var canOpenPrefs = !!(window.DBCM && typeof window.DBCM.openPreferences === 'function');
+        var $forms = recaptchaForms();
+        $forms.find('.dbfb-recaptcha-placeholder').prop('hidden', false);
+        $forms.find('.dbfb-open-consent-prefs').prop('hidden', !canOpenPrefs);
+    }
+
+    function evaluateRecaptchaGate() {
+        if (!rcConfig.enabled || !rcSiteKey || !recaptchaForms().length) return;
+        if (rcState === 'loading' || rcState === 'ready') return;
+        if (hasRecaptchaConsent()) {
+            loadRecaptcha();
+        } else {
+            showRecaptchaBlocked();
+        }
+    }
+
+    $(document).on('click', '.dbfb-open-consent-prefs', function(e) {
+        e.preventDefault();
+        if (window.DBCM && typeof window.DBCM.openPreferences === 'function') {
+            window.DBCM.openPreferences();
+        }
+    });
+
+    // DB Cookie Manager: evento a ogni scelta (detail.consent.<categoria>) e
+    // 'dbcm:ready' quando l'API window.DBCM è disponibile.
+    document.addEventListener('dbcm:consent', function(ev) {
+        var consent = (ev && ev.detail && ev.detail.consent) || {};
+        if (consent[rcConfig.category] === true && rcConfig.enabled && recaptchaForms().length) {
+            loadRecaptcha();
+            return;
+        }
+        evaluateRecaptchaGate();
+    });
+    document.addEventListener('dbcm:ready', evaluateRecaptchaGate);
+
+    // WP Consent API: detail = { categoria: 'allow' | 'deny' }. Ascoltiamo
+    // sia window sia document (le implementazioni variano); la valutazione
+    // è idempotente.
+    var onWpConsentChange = function(ev) {
+        var detail = (ev && ev.detail) || {};
+        if (detail[rcConfig.category] === 'allow' && rcConfig.enabled && recaptchaForms().length) {
+            loadRecaptcha();
+        }
+    };
+    window.addEventListener('wp_listen_for_consent_change', onWpConsentChange);
+    document.addEventListener('wp_listen_for_consent_change', onWpConsentChange);
+
+    // =========================================================
     // FORM SUBMIT (FormData — supports files)
     // =========================================================
 
@@ -321,8 +455,10 @@
         
         var $form = $(this);
         var formId = $form.data('form-id');
-        var isV3 = $form.data('recaptcha-v3');
-        var hasV2Widget = $form.find('.g-recaptcha').length > 0;
+        // 2.13.0: '' | 'v2' | 'v3' (attributo emesso solo se reCAPTCHA è attivo per il form).
+        var rcMode = $form.attr('data-dbfb-recaptcha') || '';
+        var $v2Widget = $form.find('.dbfb-g-recaptcha');
+        var v2WidgetId = $v2Widget.data('widget-id');
         
         // Collect non-file data (only from enabled/visible fields)
         var formData = {};
@@ -403,12 +539,19 @@
                 processData: false,
                 contentType: false,
                 success: function(response) {
+                    // Risposta non JSON (es. "0" o "-1" di admin-ajax): la
+                    // segnaliamo invece di fallire in silenzio (2.13.0).
+                    if (!response || typeof response !== 'object') {
+                        console.warn('DBFB: risposta inattesa dal server', response);
+                        showMessage($form, 'error', i18n.generic_error);
+                        return;
+                    }
                     if (response.success) {
                         showMessage($form, 'success', response.data.message);
                         $form[0].reset();
                         $form.find('.dbfb-file-list').empty();
                         $form.find('.dbfb-file-dropzone').removeClass('dbfb-file-has-files');
-                        if (typeof grecaptcha !== 'undefined' && hasV2Widget) grecaptcha.reset();
+                        if (rcMode === 'v2' && typeof grecaptcha !== 'undefined' && v2WidgetId !== undefined) grecaptcha.reset(v2WidgetId);
                         
                         // Hide form fields while showing success
                         var $multistep = $form.find('.dbfb-multistep');
@@ -462,17 +605,36 @@
                             }
                         }, 5000);
                     } else {
-                        showMessage($form, 'error', response.data.message);
-                        if (response.data.field_id) {
-                            showFieldError($form, response.data.field_id, response.data.message);
+                        var errData = response.data || {};
+                        console.warn('DBFB: invio rifiutato', errData.code || '', errData.message || '');
+                        showMessage($form, 'error', errData.message || i18n.generic_error);
+                        if (errData.code === 'recaptcha_consent') {
+                            $form.find('.dbfb-recaptcha-placeholder').prop('hidden', false);
+                        }
+                        if (errData.field_id) {
+                            showFieldError($form, errData.field_id, errData.message);
                             var $firstError = $form.find('[aria-invalid="true"]').first();
                             if ($firstError.length) $firstError.trigger('focus');
                         }
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.error('DBFB Error:', status, error);
-                    showMessage($form, 'error', i18n.generic_error);
+                    // 2.13.0: mai fallire in silenzio. 403 = origine non valida
+                    // (anonimi) o nonce scaduto (utenti loggati, risposta "-1");
+                    // 429 = rate limit globale per IP.
+                    var data = (xhr.responseJSON && xhr.responseJSON.data) || null;
+                    console.warn('DBFB: invio non riuscito', xhr.status, status, error, data || xhr.responseText);
+                    var msg = i18n.generic_error;
+                    if (data && data.message) {
+                        msg = data.message;
+                    } else if (data && data.code === 'bad_origin') {
+                        msg = i18n.bad_origin;
+                    } else if (xhr.status === 403) {
+                        msg = i18n.session_expired;
+                    } else if (xhr.status === 429) {
+                        msg = i18n.rate_limited;
+                    }
+                    showMessage($form, 'error', msg);
                 },
                 complete: function() {
                     setLoadingState($form, false);
@@ -480,29 +642,41 @@
             });
         };
         
-        // Handle reCAPTCHA
-        if (typeof grecaptcha !== 'undefined' && dbfb.recaptcha_site_key) {
-            if (isV3) {
-                grecaptcha.ready(function() {
-                    grecaptcha.execute(dbfb.recaptcha_site_key, {action: 'submit'}).then(function(token) {
-                        submitForm(token);
-                    }).catch(function(err) {
-                        console.error('reCAPTCHA v3 error:', err);
-                        showMessage($form, 'error', i18n.recaptcha_error);
-                    });
-                });
-            } else if (hasV2Widget) {
-                var response = grecaptcha.getResponse();
-                if (!response) {
-                    showMessage($form, 'error', i18n.recaptcha_required);
-                    return;
-                }
-                submitForm(response);
-            } else {
-                submitForm('');
-            }
-        } else {
+        // Handle reCAPTCHA (2.13.0: stato del consent gate lato client)
+        if (!rcMode) {
             submitForm('');
+            return;
+        }
+        if (rcState === 'loading') {
+            showMessage($form, 'error', i18n.recaptcha_loading);
+            return;
+        }
+        if (rcState !== 'ready' || typeof grecaptcha === 'undefined') {
+            if (rcState === 'error') {
+                showMessage($form, 'error', i18n.recaptcha_error);
+            } else {
+                // Consenso mancante: stesso messaggio del server.
+                showMessage($form, 'error', i18n.recaptcha_consent);
+                $form.find('.dbfb-recaptcha-placeholder').prop('hidden', false);
+            }
+            return;
+        }
+        if (rcMode === 'v3') {
+            grecaptcha.ready(function() {
+                grecaptcha.execute(rcSiteKey, {action: 'submit'}).then(function(token) {
+                    submitForm(token);
+                }, function(err) {
+                    console.warn('DBFB: errore reCAPTCHA v3', err);
+                    showMessage($form, 'error', i18n.recaptcha_error);
+                });
+            });
+        } else {
+            var rcResponse = v2WidgetId !== undefined ? grecaptcha.getResponse(v2WidgetId) : '';
+            if (!rcResponse) {
+                showMessage($form, 'error', i18n.recaptcha_required);
+                return;
+            }
+            submitForm(rcResponse);
         }
     });
     
@@ -641,6 +815,7 @@
     // =========================================================
     
     $(document).ready(function() {
+        evaluateRecaptchaGate();
         initConditionalLogic();
         initFileUploads();
         initMultiStep();

@@ -17,7 +17,7 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
 - **Upload file** — Drag & drop o click, estensioni configurabili, dimensione max per campo, file multipli, validazione client + server
 - **Form multi-step** — Barra di progresso, navigazione avanti/indietro, validazione per step
 - **Webhook** — POST JSON a URL esterno dopo ogni invio (compatibile Zapier, Make, n8n)
-- **Protezione anti-spam** — Google reCAPTCHA v2/v3 (consent-gated 2.3.0+) + Honeypot invisibile
+- **Protezione anti-spam** — Google reCAPTCHA v2/v3 (consent gate lato client, compatibile con la cache di pagina dalla 2.13.0) + Honeypot invisibile
 - **Privacy by design (2.3.0+)**:
   - IP hashato SHA-256 di default (modalità configurabile: hash / nessuno / chiaro)
   - Retention automatica delle submission (cron giornaliero, default 365 giorni)
@@ -28,7 +28,8 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
 - **Limite invii per IP** — Configurabile per form (max N invii in X minuti), funziona anche con IP hashato/non salvato
 - **Email personalizzabili** — Conferma utente + notifica admin (più destinatari) con placeholder dinamici, inseribili con un clic dall'editor (2.12.0+)
 - **Colori personalizzabili (2.12.0+)** — Sfondo, pulsanti e testo del form, globali o per singolo form, con contrasto WCAG AA garantito sui pulsanti e avviso sul testo
-- **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, file come link scaricabili
+- **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, allegati scaricabili solo dall'admin (2.13.0+)
+- **Aggiornamenti automatici** — da GitHub Releases, direttamente in Plugin → Aggiornamenti (2.13.0+)
 - **Duplica form** — Copia campi e impostazioni con un click
 - **Anteprima** — Visualizza il form nel builder prima di pubblicare
 - **Template predefiniti** — 5 modelli pronti all'uso
@@ -68,7 +69,7 @@ In tutti e tre i casi, i file allegati vengono cancellati dal disco insieme alla
 
 A partire dalla 2.5.0, il Form Builder è integrato con la macchina nativa di WordPress per le DSAR. L'admin trova in `Strumenti → Esporta dati personali` e `Strumenti → Cancella dati personali` un'interfaccia che permette, data un'email:
 
-- **Esporta dati**: WP genera uno ZIP scaricabile contenente tutte le submission che hanno quell'email come valore di un campo di tipo email. Include nome del form, data invio, valori dei campi, nomi e URL degli allegati, IP (rispetta storage mode).
+- **Esporta dati**: WP genera uno ZIP scaricabile contenente tutte le submission che hanno quell'email come valore di un campo di tipo email. Include nome del form, data invio, valori dei campi, nomi degli allegati (i file stanno in un'area protetta: una copia si fornisce su richiesta), IP (rispetta storage mode, con indicazione "hash" o "in chiaro") e, dalla 2.13.0, la prova del consenso (testo, data, informativa, versione della policy).
 - **Cancella dati**: WP cancella tutte le stesse submission insieme ai loro file allegati. Output: numero di submission rimosse + numero di file cancellati.
 
 Il matching è esatto e case-insensitive: l'email deve corrispondere al valore di un campo `type=email` del form (non l'email che appare casualmente nel testo di un campo Messaggio).
@@ -101,22 +102,35 @@ Stesso pattern di [DB Cookie Manager](https://github.com/dadebertolino/db-cookie
 
 WordPress non chiede conferma prima di chiamare `uninstall.php`, quindi il comportamento si decide in anticipo via `Form Builder → Impostazioni → Privacy → Cancellazione dati alla disinstallazione`.
 
-**Soft (default, checkbox OFF):** alla disinstallazione vengono rimossi solo le option del plugin, i transient di rate limit, e lo scheduling del cron. **Restano in DB** la tabella delle submission, i form definiti (CPT `dbfb_form`) e gli allegati nella Media Library. Pensato per disinstallazioni temporanee — se reinstalli, ritrovi tutto.
+**Soft (default, checkbox OFF):** alla disinstallazione vengono rimossi solo le option del plugin, i transient di rate limit, e lo scheduling del cron. Dalla 2.13.0 vengono tolti anche il cron delle webhook deliveries e i dispatch in coda. **Restano** la tabella delle submission, la tabella delle webhook deliveries, i form definiti (CPT `dbfb_form`) e gli allegati in `wp-content/uploads/dbfb/` (gli allegati non sono mai stati nella Media Library). Pensato per disinstallazioni temporanee — se reinstalli, ritrovi tutto.
 
-**Hard (checkbox ON):** alla disinstallazione viene fatto `DROP TABLE wp_dbfb_submissions`, vengono cancellati tutti i post di tipo `dbfb_form` (con i relativi post meta), tutti i file allegati delle submission dal disco, le sottocartelle vuote in `wp-content/uploads/dbfb/`, i file di sicurezza (`.htaccess`, `index.php`) e le option del plugin. Operazione **irreversibile**. Quando attivi il checkbox, l'UI mostra un alert giallo che riepiloga cosa accadrà.
+**Hard (checkbox ON):** alla disinstallazione viene fatto `DROP TABLE` di `wp_dbfb_submissions` e `wp_dbfb_webhook_deliveries` (2.13.0+), vengono cancellati tutti i post di tipo `dbfb_form` (con i relativi post meta), tutti i file allegati delle submission dal disco, le sottocartelle vuote in `wp-content/uploads/dbfb/`, i file di sicurezza (`.htaccess`, `index.php`) e le option del plugin. Operazione **irreversibile**. Quando attivi il checkbox, l'UI mostra un alert giallo che riepiloga cosa accadrà.
 
-## Integrazione con DB Cookie Manager, DB Privacy Hub, DB SEO Manager
+La disinstallazione funziona anche da WP-CLI (`wp plugin uninstall db-form-builder`): dalla 2.13.0 `uninstall.php` non richiede più un utente corrente.
 
-Quando uno o più di questi plugin sono installati, il Form Builder li sfrutta automaticamente — senza configurazione.
+## Integrazione ecosistema DB privacy
 
-### Consent gate per reCAPTCHA
+Il Form Builder fa parte dell'ecosistema privacy dei plugin DB (**DB Privacy Hub**, **DB Cookie Manager**, **DB SEO Manager**). Quando uno o più di questi plugin sono installati li sfrutta automaticamente, senza configurazione; da solo funziona comunque (ogni integrazione è opzionale).
 
-Lo script Google reCAPTCHA viene caricato solo se l'utente ha dato consenso `marketing` (o se il sito non ha alcun consent manager). Quando il consenso manca:
-- Il widget reCAPTCHA è sostituito da un **placeholder informativo** che invita a modificare le preferenze cookie.
-- Lato server il limite invii per IP diventa obbligatorio (default 5 invii/60 minuti, o i valori del form) anche se non abilitato nelle impostazioni del form, più honeypot se attivo. Nota: il gate si basa sul consenso dichiarato dal browser, quindi un bot può sempre omettere il cookie e ricadere in questo percorso; il rate limit ne limita l'abuso (2.11.2+).
-- Quando l'utente accetta `marketing`, la pagina si ricarica automaticamente (listener su `dbcm:consent`) e il widget compare.
+| Capability | Stato | Dettaglio |
+|---|---|---|
+| Dati personali | Sì | Submission in `wp_dbfb_submissions`, allegati in `uploads/dbfb/`, payload in `wp_dbfb_webhook_deliveries` |
+| Script di terze parti | Sì | Google reCAPTCHA (opzionale), caricato solo dopo il consenso |
+| Consenso dell'utente | Sì | Checkbox GDPR per form, prova del consenso art. 7.1 |
+| DSAR | Sì | Exporter + eraser (art. 15 e 17), marker `DBFB_DSAR_AVAILABLE` |
+| Privacy Hub | Sì | `dbph_processing_register`, `dbph_user_data_exporters/erasers`, `dbph_consents_register` |
 
-Compatibile con: **DB Cookie Manager 3.0.0+**, qualsiasi plugin che esponga `wp_has_consent()` (Cookiebot, Complianz, Real Cookie Banner via WP Consent API). Per siti senza consent manager, il comportamento è identico alla 2.2.0 (carica sempre).
+### Consent gate per reCAPTCHA (lato client dalla 2.13.0)
+
+Il server emette sempre lo stesso markup, indipendente dal visitatore, quindi il form funziona anche con cache di pagina (WP Rocket, LiteSpeed Cache, Cloudflare APO). È `frontend.js` a decidere se caricare lo script Google `api.js`:
+
+- **Nessun consent manager** (né DB Cookie Manager né WP Consent API), oppure gate disattivato via filter → lo script parte subito.
+- **Consent manager presente** → lo script parte solo con il consenso alla categoria configurata (default `marketing`, filter `dbfb_recaptcha_category`). Il client usa `window.DBCM.hasConsent()` o `wp_has_consent()` e ascolta `dbcm:consent`, `dbcm:ready` e `wp_listen_for_consent_change`: quando il visitatore accetta, il widget compare **senza ricaricare la pagina**.
+- **Senza consenso** al posto del widget compare un placeholder: "Per inviare il modulo accetta i cookie …, necessari alla verifica anti-spam", con il link alle preferenze se c'è il DB Cookie Manager.
+
+**Scelta lato server:** se reCAPTCHA è attivo per il form il token è sempre richiesto. Un invio senza token viene rifiutato con il messaggio "Per inviare il modulo accetta i cookie necessari alla verifica anti-spam" (se il consent gate è attivo), coerente con il placeholder. Fino alla 2.12.0 gli invii senza token erano accettati con il solo rate limit: bastava che un bot omettesse il cookie di consenso per saltare la verifica. Chi preferisce non condizionare l'invio al consenso può impostare la categoria `functional` (reCAPTCHA sempre caricato) documentandolo nell'informativa, oppure disattivare reCAPTCHA sul form e affidarsi a honeypot + limite invii.
+
+Compatibile con: **DB Cookie Manager 3.0.0+** (`dbcm:ready` usato se disponibile), qualsiasi plugin che esponga la WP Consent API (Cookiebot, Complianz, Real Cookie Banner).
 
 Filter per casi avanzati:
 ```php
@@ -148,6 +162,10 @@ Quando il Privacy Hub è installato, le DSAR (richieste di accesso e cancellazio
 
 Senza l'Hub, il Form Builder si registra direttamente sui filter core di WordPress (`wp_privacy_personal_data_exporters/erasers`), come faceva nella 2.8.0. Comportamento standalone identico, niente regressioni.
 
+### Registro consensi unificato (sorgente `dbfb_form_consents`)
+
+Dalla 2.11.0 ogni invio con checkbox GDPR attiva salva la prova del consenso (flag, testo mostrato, timestamp, URL informativa, ID versione della Privacy Policy dell'Hub). Tramite il filter `dbph_consents_register` il Form Builder registra la sorgente **`dbfb_form_consents`** nel "Registro consensi" del Privacy Hub, con callback di conteggio, consultazione ed export CSV (filtri per data e interessato; dalla 2.13.0 l'export rispetta il limite richiesto dall'Hub, fino a 50.000 righe). Solo le submission con `gdpr_consent_given = 1` compaiono nel registro; l'email dell'interessato è mascherata.
+
 ### Marker `DBFB_DSAR_AVAILABLE`
 
 Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)`). Letta dal Privacy Hub per decidere se inserire la menzione "procedura DSAR semplificata via Strumenti → Esporta/Cancella dati personali" nella sezione "Diritti dell'interessato" della Privacy Policy generata.
@@ -160,6 +178,11 @@ Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)
 | `dbfb_recaptcha_consent_required` | `true` | Gate reCAPTCHA al consenso (false = scarica sempre) |
 | `dbfb_recaptcha_category` | `'marketing'` | Categoria di consenso richiesta per reCAPTCHA |
 | `dbfb_dsar_email_field_ids` | `[]` (auto) | Estende i campi considerati come "email" per il matching DSAR (2.5.0+) |
+| `dbfb_submit_rate_limit` | `20` | Invii anonimi massimi per IP nella finestra, su tutti i form (2.13.0+, `0` = disattivato) |
+| `dbfb_submit_rate_window` | `600` | Durata in secondi della finestra del limite precedente (2.13.0+) |
+| `dbfb_download_capability` | `'manage_options'` | Capability richiesta per scaricare gli allegati (2.13.0+) |
+| `dbfb_webhook_signed_file_links` | `true` | Link firmati per gli allegati nei webhook (2.13.0+, `false` = URL diretto) |
+| `dbfb_webhook_file_link_ttl` | `604800` | Validità in secondi dei link firmati nei webhook (2.13.0+, default 7 giorni) |
 
 Action: `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
 
@@ -197,7 +220,15 @@ Trascina il campo "Upload file" nel builder e configura:
 - Estensioni ammesse (default: jpg, jpeg, png, gif, pdf, doc, docx, xls, xlsx, zip)
 - Dimensione massima per file (default: 5 MB)
 - File multipli sì/no
-- I file vengono salvati in `wp-content/uploads/dbfb/{form_id}/`
+- I file vengono salvati in `wp-content/uploads/dbfb/{form_id}/` (non nella Media Library)
+
+**Protezione degli allegati (2.13.0+).** Gli allegati non hanno più un URL pubblico:
+- il nome di ogni nuovo file ha un prefisso casuale di 24 caratteri (non indovinabile);
+- `uploads/dbfb/.htaccess` nega l'accesso diretto a tutta la cartella (sintassi Apache 2.2 e 2.4), con `index.php` contro il listing; la regola viene applicata anche alle installazioni esistenti al primo accesso all'admin;
+- il download avviene solo da `admin-post.php?action=dbfb_download` (login, capability `manage_options`, nonce, percorso confinato in `uploads/dbfb/` con verifica `realpath`). Lo usano la pagina Risposte, l'export CSV e l'email di notifica all'admin (dal link in un'email l'admin conferma il download con un clic). I file caricati prima della 2.13.0 restano scaricabili dallo stesso handler.
+- l'email di conferma a chi ha inviato il form riporta solo il nome dell'allegato, senza link (quello admin richiederebbe un login che l'utente non ha).
+- **Nginx non legge `.htaccess`**: aggiungi alla configurazione del sito `location ^~ /wp-content/uploads/dbfb/ { deny all; }` (l'admin mostra un avviso con la regola). Senza la regola, su Nginx i file restano protetti solo dal nome non prevedibile.
+- I webhook ricevono nome, dimensione e un **link firmato a scadenza** al posto dell'URL diretto (vedi sezione Webhook).
 
 ### Multi-step
 Trascina "Cambio pagina" tra i campi per dividere il form in step. Il frontend mostra automaticamente barra di progresso, bottoni Indietro/Avanti e validazione per step.
@@ -230,6 +261,8 @@ if abs(now() - int(timestamp_header)) > 300:  # max 5 min
 ```
 
 Pattern industry-standard usato da Stripe e GitHub. Il timestamp protegge da replay attack.
+
+**Allegati nel payload (2.13.0+).** La cartella `uploads/dbfb/` non è più raggiungibile direttamente, quindi nel payload il valore `url` di ogni allegato (in `fields[].value` e in `raw_data`) è un link pubblico firmato: `admin-post.php?action=dbfb_file&f=<path>&exp=<timestamp>&sig=<hmac>`. Le chiavi del payload non cambiano. Il link non richiede login, scade dopo 7 giorni (filter `dbfb_webhook_file_link_ttl`, in secondi) ed è firmato con HMAC SHA-256 su `path|scadenza` con un secret dedicato (option `dbfb_file_link_secret`, generata una sola volta; cancellandola si invalidano tutti i link emessi). Il file viene servito come allegato, con `nosniff` e header anti-cache, con lo stesso controllo `realpath` del download admin. Il link è generato al momento di ogni tentativo di invio (anche nei retry automatici e nel "Re-invia" manuale), quindi è sempre valido per l'intero TTL dal momento della consegna. Chi scarica gli allegati in modo asincrono deve farlo entro il TTL. Per tornare all'URL diretto (inutile se la cartella è protetta): `add_filter('dbfb_webhook_signed_file_links', '__return_false');`.
 
 ### Email
 Configura il mittente nelle Impostazioni globali (se l'indirizzo non è valido si usa il mittente predefinito di WordPress). Personalizza oggetto e messaggio per ogni form. Più destinatari admin separati da virgola. Le email sono in testo semplice.
@@ -288,6 +321,20 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.13.0 — Invii con cache di pagina, reCAPTCHA cache-safe, allegati protetti
+
+- **Invii falliti con cache di pagina:** per i visitatori anonimi il nonce stampato nell'HTML scadeva dopo 12–24h e ogni invio veniva rifiutato con 403. Ora gli anonimi vengono verificati con controllo di origine (`Origin`, in mancanza `Referer`, dello stesso host del sito) più un limite globale di invii per IP (hash salato, filter `dbfb_submit_rate_limit` / `dbfb_submit_rate_window`); gli utenti loggati restano sul nonce. Il JavaScript non fallisce più in silenzio: `console.warn` e messaggio specifico (richiesta non valida, sessione scaduta, troppi invii).
+- **reCAPTCHA compatibile con la cache:** il consenso non viene più valutato al render (la decisione finiva nella cache e valeva per tutti). Markup sempre uguale, script Google caricato da `frontend.js` solo dopo il consenso (`window.DBCM.hasConsent`, eventi `dbcm:consent` / `dbcm:ready`, WP Consent API), senza ricaricare la pagina. La categoria del filter `dbfb_recaptcha_category` arriva al client e al testo del placeholder (prima "marketing" era fisso). Lato server il token è sempre richiesto quando reCAPTCHA è attivo: senza token l'invio è rifiutato con "Per inviare il modulo accetta i cookie necessari alla verifica anti-spam". `should_load_recaptcha()` ed `enqueue_form_dependencies()` restano per compatibilità ma sono deprecate.
+- **Schema DB saltato alla riattivazione:** `maybe_create_table()` segnava lo schema come aggiornato anche quando la tabella esisteva già senza migrazioni, e gli INSERT con le colonne del consenso fallivano in silenzio. Ora la versione si segna solo per tabelle create da zero; nuovo schema v5 che riesegue una volta tutti i passi di migrazione (idempotenti) per riparare le installazioni colpite. Se la tabella manca (mu-plugin, attivazione saltata) viene creata al primo `admin_init`.
+- **Allegati non più pubblici:** nuovi file con prefisso casuale di 24 caratteri, `.htaccess` "deny all" su `uploads/dbfb/` (Apache 2.2 + 2.4, senza `Options` che poteva dare 500), download solo da admin con capability, nonce e controllo `realpath`. Pagina Risposte, CSV ed email di notifica all'admin usano il nuovo link; l'email di conferma all'utente mostra solo il nome del file. I webhook ricevono un link pubblico firmato (HMAC) e a scadenza (`admin-post.php?action=dbfb_file`, 7 giorni, filter `dbfb_webhook_file_link_ttl` e `dbfb_webhook_signed_file_links`), rigenerato a ogni tentativo di consegna: le chiavi del payload restano invariate. Su Nginx serve la regola `location` indicata nell'avviso admin.
+- **Registro trattamenti:** il testo diceva che gli allegati stavano "nella Media Library con visibilità privata", cosa mai vera. Ora descrive la protezione reale.
+- **Disinstallazione:** vengono tolti anche il cron `dbfb_cleanup_deliveries` e i `dbfb_webhook_dispatch` in coda; in modalità Hard viene eliminata anche la tabella `wp_dbfb_webhook_deliveries`. Rimosso il controllo `current_user_can()`, che con WP-CLI faceva uscire lo script senza pulire nulla.
+- **Cron deliveries:** pianificato in modo idempotente anche su `admin_init`, non solo all'attivazione.
+- **Registro consensi Hub:** l'export leggeva solo `_internal_limit` e si fermava a 1000 righe anche quando l'Hub ne chiedeva 50.000; ora usa `limit`. Il filtro per interessato usa `esc_like` (`%` e `_` letterali).
+- **DSAR:** l'eraser ripartiva da capo a ogni chiamata e, con oltre 5000 falsi positivi del `LIKE`, non terminava mai; ora il cursore si conserva fra le chiamate e c'è un tetto di sicurezza. L'export etichettava sempre l'IP come "hash" anche quando era in chiaro, e ora include la prova del consenso (testo, data, informativa, versione della policy). Gli allegati sono esportati per nome.
+- **Submit:** accettati solo ID di form `dbfb_form` pubblicati.
+- **Componenti condivisi:** aggiunti l'auto-updater GitHub (`inc/class-updater.php`) e il design system `db-admin-ui.css` (dipendenza di `admin.css`). Header del plugin con il blocco "Privacy capabilities".
 
 ### 2.12.0 — Colori personalizzabili + segnaposto email cliccabili
 
@@ -533,7 +580,7 @@ Allineamento al pattern dell'ecosistema DB (DB Cookie Manager 3.0.2 + DB SEO Man
 
 ## Requisiti
 
-- WordPress 5.0+
+- WordPress 5.8+
 - PHP 7.4+
 
 ## Struttura
@@ -547,16 +594,20 @@ db-form-builder/
 │   ├── class-core.php               # Singleton, hooks, CPT, menu, scripts, routing, IP/cron helpers
 │   ├── class-builder.php            # Form builder, save, sanitize, templates
 │   ├── class-submit.php             # Submit, honeypot, GDPR, reCAPTCHA gating, file upload, webhook
-│   ├── class-submissions.php        # Risposte, CSV export
+│   ├── class-submissions.php        # Risposte, CSV export, download protetto allegati
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-settings.php           # Impostazioni globali, test reCAPTCHA/email, cleanup AJAX
-│   ├── class-privacy-declarations.php # Dichiarazioni al registro privacy SEO Manager (2.3.0+)
+│   ├── class-appearance.php         # Colori del frontend come variabili CSS (2.12.0+)
+│   ├── class-gdpr-compliance-notice.php # Avviso form senza consenso (2.10.0+)
+│   ├── class-updater.php            # GitHub auto-updater (componente condiviso, 2.13.0+)
+│   ├── class-privacy-declarations.php # Registro trattamenti + sorgente consensi per il Privacy Hub
 │   ├── class-privacy-dsar.php       # WP DSAR exporter + eraser (art. 15 + 17, 2.5.0+)
 │   ├── class-webhook.php            # Webhook async + retry + HMAC (2.7.0+)
 │   ├── class-gutenberg.php          # Blocco Gutenberg
 │   └── class-widget.php             # Widget classico
 ├── assets/
 │   ├── css/
+│   │   ├── db-admin-ui.css          # Design system condiviso dei plugin DB (2.13.0+)
 │   │   ├── admin.css
 │   │   └── frontend.css
 │   └── js/
@@ -569,7 +620,8 @@ db-form-builder/
     │   ├── form-builder.php
     │   ├── settings.php
     │   ├── submissions.php
-    │   └── submissions-list.php
+    │   ├── submissions-list.php
+    │   └── webhook-deliveries.php
     └── frontend/
         └── form.php
 ```

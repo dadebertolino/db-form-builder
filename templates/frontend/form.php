@@ -1,13 +1,14 @@
 <?php if (!defined('ABSPATH')) exit; 
 
 $global_settings = DB_Form_Builder::get_global_settings();
-$enable_captcha = !empty($form_settings['enable_captcha']) && !empty($global_settings['recaptcha_site_key']);
-// Consent gate (2.3.0): controlla se possiamo realmente caricare lo script
-// reCAPTCHA. Se enable_captcha è true ma captcha_loaded è false, mostriamo
-// un placeholder al posto del widget — il submit-side ha rate limit + honeypot
-// come difese di base che restano sempre attive.
-$captcha_loaded = $enable_captcha && DB_Form_Builder::should_load_recaptcha($form_settings);
-$recaptcha_version = $global_settings['recaptcha_version'] ?? 'v2';
+// Consent gate cache-safe (2.13.0): qui NON si legge il consenso del
+// visitatore (la pagina può essere servita da una cache a chiunque). Il
+// markup è sempre lo stesso: contenitore del widget e placeholder nascosti,
+// frontend.js carica api.js di Google solo dopo il consenso e mostra l'uno
+// o l'altro. Senza token il server rifiuta l'invio con un messaggio esplicito.
+$enable_captcha = DB_Form_Builder::is_recaptcha_enabled_for_form($form_settings);
+$recaptcha_version = ($global_settings['recaptcha_version'] ?? 'v2') === 'v3' ? 'v3' : 'v2';
+$recaptcha_gate = DB_Form_Builder::recaptcha_consent_gate();
 $enable_honeypot = !empty($form_settings['enable_honeypot']);
 $enable_gdpr = !empty($form_settings['enable_gdpr']);
 $form_title = get_the_title($form_id);
@@ -20,7 +21,7 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
 
 <form class="dbfb-form<?php echo DBFB_Appearance::has_background($form_settings) ? ' dbfb-has-bg' : ''; ?>"<?php echo DBFB_Appearance::style_attribute($form_settings); // già escapato ?>
       data-form-id="<?php echo esc_attr($form_id); ?>" 
-      <?php if ($captcha_loaded && $recaptcha_version === 'v3'): ?>data-recaptcha-v3="1"<?php endif; ?>
+      <?php if ($enable_captcha): ?>data-dbfb-recaptcha="<?php echo esc_attr($recaptcha_version); ?>"<?php endif; ?>
       <?php if ($has_file_fields): ?>enctype="multipart/form-data"<?php endif; ?>
       role="form"
       aria-label="<?php echo esc_attr($form_title); ?>"
@@ -262,65 +263,40 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
     </div>
     <?php endif; ?>
     
-    <?php if ($enable_captcha && $captcha_loaded && $recaptcha_version === 'v2'): ?>
-    <div class="dbfb-form-group dbfb-recaptcha-container">
-        <div class="g-recaptcha" data-sitekey="<?php echo esc_attr($global_settings['recaptcha_site_key']); ?>"></div>
+    <?php if ($enable_captcha): ?>
+    <?php // Widget v2: renderizzato da frontend.js (render esplicito) dopo il consenso. ?>
+    <div class="dbfb-form-group dbfb-recaptcha-container" hidden>
+        <?php if ($recaptcha_version === 'v2'): ?>
+        <div class="dbfb-g-recaptcha" data-sitekey="<?php echo esc_attr($global_settings['recaptcha_site_key']); ?>"></div>
+        <?php endif; ?>
     </div>
-    <?php elseif ($enable_captcha && !$captcha_loaded): ?>
     <?php
-    // Placeholder mostrato quando reCAPTCHA è configurato ma il consent
-    // gate ha bloccato il caricamento (es. utente non ha accettato cookie
-    // marketing). Il submit-side resta protetto da rate limit + honeypot
-    // (sempre attivi) ma comunichiamo all'utente perché manca il widget.
-    $reopen_handler = class_exists('DBCM_Consent_API')
-        ? 'window.DBCM && window.DBCM.openPreferences && window.DBCM.openPreferences(); return false;'
-        : '';
+    // Placeholder mostrato da frontend.js quando reCAPTCHA è configurato ma
+    // manca il consenso alla categoria richiesta (filter
+    // dbfb_recaptcha_category). Il link "modifica preferenze" è gestito da
+    // frontend.js (window.DBCM.openPreferences se disponibile).
+    $category_label = DB_Form_Builder::consent_category_label($recaptcha_gate['category']);
     ?>
     <div class="dbfb-form-group dbfb-recaptcha-placeholder"
          role="region"
+         hidden
          aria-label="<?php esc_attr_e('Antispam non attivo', 'db-form-builder'); ?>"
          style="padding:12px 16px;background:color-mix(in srgb, var(--dbfb-text) 5%, transparent);border:1px dashed #767676;border-radius:4px;font-size:0.9em">
         <span aria-hidden="true">🔒</span>
         <strong><?php esc_html_e('Antispam reCAPTCHA non attivo', 'db-form-builder'); ?></strong>
         <p style="margin:6px 0 0">
             <?php
-            if ($reopen_handler) {
-                printf(
-                    /* translators: %s: link "modifica preferenze" */
-                    esc_html__('Per attivare la protezione antispam Google reCAPTCHA, %s e accetta i cookie di marketing.', 'db-form-builder'),
-                    '<a href="#" onclick="' . esc_attr($reopen_handler) . '">' . esc_html__('modifica le tue preferenze cookie', 'db-form-builder') . '</a>'
-                );
-            } else {
-                esc_html_e('Per attivare la protezione antispam Google reCAPTCHA è necessario accettare i cookie di marketing.', 'db-form-builder');
-            }
+            printf(
+                /* translators: %s: categoria di cookie, es. "di marketing" */
+                esc_html__('Per inviare il modulo accetta i cookie %s, necessari alla verifica anti-spam Google reCAPTCHA.', 'db-form-builder'),
+                esc_html($category_label)
+            );
             ?>
+            <a href="#" class="dbfb-open-consent-prefs" hidden><?php esc_html_e('Modifica le preferenze cookie', 'db-form-builder'); ?></a>
         </p>
     </div>
-    <?php
-    // Se il Cookie Manager è attivo, ascoltiamo l'evento dbcm:consent per
-    // ricaricare la pagina quando l'utente accetta marketing — così il
-    // placeholder sparisce e il widget reCAPTCHA viene caricato. Il reload
-    // è coerente col modello server-rendered (vedi consent-listener.js del
-    // SEO Manager 1.2.0). Lo emettiamo una sola volta per pagina anche se
-    // ci sono più form: usiamo una flag globale.
-    if (class_exists('DBCM_Consent_API')) :
-    ?>
-    <script>
-    (function() {
-        if (window.__dbfb_consent_reload_listener) return;
-        window.__dbfb_consent_reload_listener = true;
-        document.addEventListener('dbcm:consent', function(ev) {
-            var consent = (ev && ev.detail && ev.detail.consent) || {};
-            // Se è arrivato consenso marketing, ricarichiamo per caricare reCAPTCHA.
-            if (consent.marketing === true) {
-                window.location.reload();
-            }
-        });
-    })();
-    </script>
     <?php endif; ?>
-    <?php endif; ?>
-    
+
     <?php if ($enable_gdpr): ?>
     <div class="dbfb-form-group dbfb-gdpr-group">
         <div class="dbfb-checkbox-item">
@@ -366,8 +342,8 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
         </button>
     </div>
     
-    <?php if ($captcha_loaded): ?>
-    <div class="dbfb-recaptcha-notice">
+    <?php if ($enable_captcha): ?>
+    <div class="dbfb-recaptcha-notice" hidden>
         <small>
             <?php _e('Questo sito è protetto da reCAPTCHA e si applicano la', 'db-form-builder'); ?>
             <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">

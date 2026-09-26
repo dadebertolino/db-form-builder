@@ -11,10 +11,11 @@
  *
  *  SOFT (default, opt-in NON attivo):
  *    - Rimuove le option del plugin (settings, schema_version)
- *    - Disschedula il cron dbfb_cleanup_submissions
+ *    - Disschedula i cron dbfb_cleanup_submissions, dbfb_cleanup_deliveries
+ *      e i dispatch dbfb_webhook_dispatch in coda (2.13.0)
  *    - Pulisce i transient dbfb_rate_*
- *    - LASCIA INTATTI: tabella submissions, post type dbfb_form +
- *      relativi post meta, allegati nella Media Library
+ *    - LASCIA INTATTI: tabelle submissions e webhook deliveries, post type
+ *      dbfb_form + relativi post meta, allegati in uploads/dbfb/
  *    Razionale: disinstallazioni temporanee (debug, switch versione,
  *    migrazione hosting) non devono distruggere dati utente.
  *
@@ -24,6 +25,7 @@
  *      DB_Form_Builder::delete_submission_files() — riusa la stessa
  *      logica path-traversal-safe del cron retention e dei delete UI.
  *    - DROP TABLE wp_dbfb_submissions (cancella TUTTE le submission)
+ *    - DROP TABLE wp_dbfb_webhook_deliveries (2.13.0)
  *    - wp_delete_post() force=true su tutti i post di tipo dbfb_form
  *      (cancella i form definiti + i loro post meta automaticamente)
  *    - Pulizia della cartella wp-content/uploads/dbfb/ (file di sicurezza
@@ -42,13 +44,10 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
-// Capability check: solo admin con manage_options possono uninstallare.
-// WP fa già questo controllo a monte, ma una difesa in profondità non
-// guasta in caso di plugin terzi che orchestrano uninstall in modo non
-// standard.
-if (!current_user_can('manage_options')) {
-    return;
-}
+// 2.13.0: rimosso il controllo current_user_can(). WP_UNINSTALL_PLUGIN è
+// definita solo da uninstall_plugin(), che WordPress chiama dopo i propri
+// controlli di permesso; con WP-CLI (`wp plugin uninstall`) non c'è un utente
+// corrente, quindi il controllo faceva uscire lo script senza pulire nulla.
 
 global $wpdb;
 
@@ -66,10 +65,22 @@ $hard_delete = !empty($global_settings['delete_data_on_uninstall']);
 // 2.1 — Cron: disschedula tutte le occorrenze di dbfb_cleanup_submissions.
 // wp_clear_scheduled_hook rimuove ogni evento futuro per questo hook.
 wp_clear_scheduled_hook('dbfb_cleanup_submissions');
+// 2.13.0: anche il cron settimanale delle webhook deliveries e i dispatch
+// in coda. dbfb_webhook_dispatch è pianificato con argomenti (id delivery):
+// wp_clear_scheduled_hook() senza argomenti non li troverebbe, quindi usiamo
+// wp_unschedule_hook() (WP 5.1+) che rimuove ogni evento dell'hook.
+wp_clear_scheduled_hook('dbfb_cleanup_deliveries');
+if (function_exists('wp_unschedule_hook')) {
+    wp_unschedule_hook('dbfb_webhook_dispatch');
+} else {
+    wp_clear_scheduled_hook('dbfb_webhook_dispatch');
+}
 
 // 2.2 — Option del plugin.
 delete_option('dbfb_global_settings');
 delete_option('dbfb_schema_version');
+delete_option('dbfb_uploads_protection');
+delete_option('dbfb_file_link_secret');
 
 // 2.3 — Transient di rate limit. dbfb_rate_* sono creati con set_transient
 // a runtime, quindi vivono in wp_options come _transient_dbfb_rate_*.
@@ -127,6 +138,11 @@ if ($hard_delete) {
     // Usiamo DROP TABLE invece di TRUNCATE + drop_table per evitare
     // race condition se il cron stesse girando.
     $wpdb->query("DROP TABLE IF EXISTS `{$table}`");
+
+    // 3.2b — DROP della tabella webhook deliveries (2.13.0). Contiene il
+    // payload completo delle submission: va rimossa insieme a esse.
+    $table_dlv = $wpdb->prefix . 'dbfb_webhook_deliveries';
+    $wpdb->query("DROP TABLE IF EXISTS `{$table_dlv}`");
 
     // 3.3 — Cancellazione di tutti i form definiti (CPT dbfb_form).
     // Usiamo wp_delete_post(force=true) per skippare il cestino e cancellare

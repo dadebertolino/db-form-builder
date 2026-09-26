@@ -107,7 +107,10 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
             $table = $wpdb->prefix . 'dbfb_submissions';
             list($where_sql, $params) = self::build_hub_consents_where($args);
 
-            $limit = isset($args['_internal_limit']) ? (int) $args['_internal_limit'] : 1000;
+            // 2.13.0: l'Hub passa 'limit' (l'export CSV chiede fino a 50000);
+            // prima veniva letto solo '_internal_limit' e l'export si fermava
+            // a 1000 righe. '_internal_limit' resta come fallback.
+            $limit = (int) ($args['limit'] ?? $args['_internal_limit'] ?? 1000);
             $limit = max(1, min(50000, $limit));
 
             $sql = "SELECT id, form_id, data, submitted_at, gdpr_consent_text, gdpr_consent_timestamp, gdpr_consent_privacy_url, gdpr_consent_policy_version FROM {$table} {$where_sql} ORDER BY gdpr_consent_timestamp DESC LIMIT {$limit}";
@@ -163,6 +166,7 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
          * @return array{0:string,1:array}
          */
         private static function build_hub_consents_where($args) {
+            global $wpdb;
             $where  = array('gdpr_consent_given = 1');
             $params = array();
 
@@ -176,8 +180,9 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
             }
             if (!empty($args['subject'])) {
                 // Match parziale sul JSON `data` (best-effort).
+                // 2.13.0: esc_like, così % e _ nel filtro restano letterali.
                 $where[] = 'data LIKE %s';
-                $params[] = '%' . (string) $args['subject'] . '%';
+                $params[] = '%' . $wpdb->esc_like((string) $args['subject']) . '%';
             }
 
             return array('WHERE ' . implode(' AND ', $where), $params);
@@ -444,7 +449,7 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 'legal_basis'    => __('Consenso esplicito dell\'interessato (art. 6.1.a GDPR) raccolto tramite checkbox del modulo. Per moduli senza checkbox GDPR esplicita: legittimo interesse (art. 6.1.f) limitato alla gestione della comunicazione richiesta dall\'utente.', 'db-form-builder'),
                 'data_collected' => sprintf(
                     /* translators: 1: descrizione modalità IP, 2: descrizione informativa privacy, 3: stato consenso GDPR sui form */
-                    __('Tutti i campi compilati dall\'utente (nome, email, messaggio, eventuali allegati e altri campi configurati nel form), timestamp dell\'invio, %1$s. Gli allegati sono salvati nella Media Library di WordPress con visibilità privata di default. Le richieste di accesso (art. 15 GDPR) e di cancellazione (art. 17) via email sono gestite automaticamente tramite Strumenti → Esporta/Cancella dati personali di WordPress. %2$s%3$s', 'db-form-builder'),
+                    __('Tutti i campi compilati dall\'utente (nome, email, messaggio, eventuali allegati e altri campi configurati nel form), timestamp dell\'invio, %1$s. Gli allegati non sono inseriti nella Media Library: sono salvati in wp-content/uploads/dbfb/ con nome file reso non prevedibile da un prefisso casuale, la cartella nega l\'accesso diretto (.htaccess su Apache/LiteSpeed; su Nginx serve una regola equivalente nella configurazione del server) e si scaricano solo dal pannello di amministrazione, previo login con permessi di amministratore. Le richieste di accesso (art. 15 GDPR) e di cancellazione (art. 17) via email sono gestite automaticamente tramite Strumenti → Esporta/Cancella dati personali di WordPress. %2$s%3$s', 'db-form-builder'),
                     $ip_label,
                     $privacy_notice_text,
                     $consent_status_text

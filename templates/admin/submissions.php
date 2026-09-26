@@ -159,7 +159,7 @@
                                    data-date="<?php echo esc_attr(date_i18n('d/m/Y H:i:s', strtotime($submission->submitted_at))); ?>"
                                    data-ip="<?php echo esc_attr($ip_info['display']); ?>"
                                    data-ip-tooltip="<?php echo esc_attr($ip_info['tooltip']); ?>"
-                                   data-fields="<?php echo esc_attr(json_encode($row_data)); ?>"
+                                   data-fields="<?php echo esc_attr(json_encode(DBFB_Submissions::with_admin_attachment_urls($row_data, $row_types_by_id + $current_types_by_id))); // 2.13.0: allegati via download admin ?>"
                                    data-labels="<?php echo esc_attr(json_encode($row_labels_by_id)); ?>"
                                    data-gdpr-given="<?php echo esc_attr( is_null($submission->gdpr_consent_given ?? null) ? '' : (string) (int) $submission->gdpr_consent_given ); ?>"
                                    data-gdpr-text="<?php echo esc_attr( (string) ($submission->gdpr_consent_text ?? '') ); ?>"
@@ -275,14 +275,18 @@ jQuery(document).ready(function($) {
             };
 
             // Check if value is a file object or array of file objects
-            if (value && typeof value === 'object' && value.url) {
+            // 2.13.0: url = link di download admin (vuoto se il file non è
+            // risolvibile: mostriamo solo il nome).
+            var fileLink = function(f) {
+                var name = $('<span>').text(f.name || '').html();
+                return f.url ? '<a href="' + safeUrl(f.url) + '">📎 ' + name + '</a>' : '📎 ' + name;
+            };
+            if (value && typeof value === 'object' && !Array.isArray(value) && 'url' in value) {
                 // Single file
-                cellHtml = '<a href="' + safeUrl(value.url) + '" target="_blank" rel="noopener">📎 ' + $('<span>').text(value.name).html() + '</a>';
-            } else if (Array.isArray(value) && value.length && value[0] && typeof value[0] === 'object' && value[0].url) {
+                cellHtml = fileLink(value);
+            } else if (Array.isArray(value) && value.length && value[0] && typeof value[0] === 'object' && 'url' in value[0]) {
                 // Multiple files
-                cellHtml = value.map(function(f) {
-                    return '<a href="' + safeUrl(f.url) + '" target="_blank" rel="noopener">📎 ' + $('<span>').text(f.name).html() + '</a>';
-                }).join('<br>');
+                cellHtml = value.map(fileLink).join('<br>');
             } else {
                 if (Array.isArray(value)) value = value.join(', ');
                 cellHtml = $('<div>').text(value).html();
