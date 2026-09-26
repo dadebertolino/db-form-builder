@@ -59,8 +59,16 @@ class DBFB_Email {
                 $value = implode(', ', $value);
             }
 
-            $field_key = sanitize_title($field['label']);
-            $placeholders['{' . $field_key . '}'] = $value;
+            // 2.12.0: segnaposto stabile basato sull'id del campo, non cambia
+            // se l'etichetta viene rinominata.
+            $placeholders['{campo:' . $field['id'] . '}'] = $value;
+            // Legacy: segnaposto derivato dall'etichetta (es. "Nome e cognome"
+            // → {nome-e-cognome}). Se due campi hanno la stessa etichetta vince
+            // il primo, così l'ordine del form resta prevedibile.
+            $field_key = '{' . sanitize_title($field['label']) . '}';
+            if ($field_key !== '{}' && !isset($placeholders[$field_key])) {
+                $placeholders[$field_key] = $value;
+            }
             $riepilogo .= $field['label'] . ': ' . $value . "\n";
         }
 
@@ -68,21 +76,67 @@ class DBFB_Email {
         return $placeholders;
     }
 
+    /**
+     * Sostituisce i segnaposto in un solo passaggio (2.11.2).
+     *
+     * strtr non rielabora il testo già sostituito: un valore inviato
+     * dall'utente che contiene a sua volta un segnaposto (es. "{ip}") resta
+     * letterale. Con str_replace a catena veniva invece espanso.
+     * I segnaposto {campo:id} di campi inesistenti vengono rimossi.
+     */
     public static function replace_placeholders($text, $placeholders) {
-        return str_replace(array_keys($placeholders), array_values($placeholders), $text);
+        // Prima togliamo dal modello i {campo:id} di campi che non esistono
+        // più, poi sostituiamo: così i valori dell'utente non vengono toccati.
+        $text = preg_replace_callback('/\{campo:[a-z0-9_\-]+\}/', function ($m) use ($placeholders) {
+            return isset($placeholders[$m[0]]) ? $m[0] : '';
+        }, (string) $text);
+        return strtr($text, array_map('strval', $placeholders));
+    }
+
+    /**
+     * Prepara oggetto e testo per un'email text/plain (2.11.2).
+     *
+     * I testi salvati fino alla 2.11.1 passavano da wp_kses_post, che
+     * converte "&" in "&amp;" e lascia passare i tag HTML: in un'email in
+     * testo semplice comparivano letterali. Qui togliamo i tag e
+     * decodifichiamo le entità PRIMA di inserire i valori dell'utente.
+     */
+    private static function to_plain_text($template) {
+        $text = wp_strip_all_tags((string) $template);
+        return html_entity_decode($text, ENT_QUOTES, 'UTF-8');
+    }
+
+    private static function build_email($subject_tpl, $message_tpl, $placeholders) {
+        $subject = self::replace_placeholders(self::to_plain_text($subject_tpl), $placeholders);
+        // L'oggetto è un header: niente a capo.
+        $subject = trim(preg_replace('/[\r\n]+/', ' ', $subject));
+        $message = self::replace_placeholders(self::to_plain_text($message_tpl), $placeholders);
+        return [$subject, $message];
     }
 
     private static function get_headers() {
         $global_settings = DB_Form_Builder::get_global_settings();
-        return [
-            'Content-Type: text/plain; charset=UTF-8',
-            'From: ' . $global_settings['from_name'] . ' <' . $global_settings['from_email'] . '>',
-        ];
+        $headers = ['Content-Type: text/plain; charset=UTF-8'];
+
+        // 2.11.2: se il mittente non è un indirizzo valido non impostiamo
+        // l'header From e lasciamo il mittente predefinito di WordPress.
+        // Prima veniva generato "From: Nome <>" e wp_mail falliva sempre.
+        $from_email = sanitize_email($global_settings['from_email'] ?? '');
+        if (is_email($from_email)) {
+            $from_name = trim(str_replace(['"', '<', '>', "\r", "\n"], '', (string) ($global_settings['from_name'] ?? '')));
+            $headers[] = $from_name !== ''
+                ? 'From: "' . $from_name . '" <' . $from_email . '>'
+                : 'From: ' . $from_email;
+        }
+        return $headers;
     }
 
     public static function send_confirmation($to, $settings, $placeholders) {
-        $subject = self::replace_placeholders($settings['confirmation_subject'] ?? '', $placeholders);
-        $message = self::replace_placeholders($settings['confirmation_message'] ?? '', $placeholders);
+        list($subject, $message) = self::build_email(
+            $settings['confirmation_subject'] ?? '',
+            $settings['confirmation_message'] ?? '',
+            $placeholders
+        );
         return wp_mail($to, $subject, $message, self::get_headers());
     }
 
@@ -93,8 +147,11 @@ class DBFB_Email {
 
         if (empty($recipients)) return false;
 
-        $subject = self::replace_placeholders($settings['admin_subject'] ?? '', $placeholders);
-        $message = self::replace_placeholders($settings['admin_message'] ?? '', $placeholders);
+        list($subject, $message) = self::build_email(
+            $settings['admin_subject'] ?? '',
+            $settings['admin_message'] ?? '',
+            $placeholders
+        );
         $headers = self::get_headers();
 
         $success = true;
@@ -156,12 +213,19 @@ class DBFB_Email {
         $headers = self::get_headers();
 
         if ($email_type === 'confirmation') {
-            $subject = '[TEST] ' . self::replace_placeholders($form_settings['confirmation_subject'] ?? '', $placeholders);
-            $message = self::replace_placeholders($form_settings['confirmation_message'] ?? '', $placeholders);
+            list($subject, $message) = self::build_email(
+                $form_settings['confirmation_subject'] ?? '',
+                $form_settings['confirmation_message'] ?? '',
+                $placeholders
+            );
         } else {
-            $subject = '[TEST] ' . self::replace_placeholders($form_settings['admin_subject'] ?? '', $placeholders);
-            $message = self::replace_placeholders($form_settings['admin_message'] ?? '', $placeholders);
+            list($subject, $message) = self::build_email(
+                $form_settings['admin_subject'] ?? '',
+                $form_settings['admin_message'] ?? '',
+                $placeholders
+            );
         }
+        $subject = '[TEST] ' . $subject;
 
         $sent = wp_mail($test_email, $subject, $message, $headers);
 

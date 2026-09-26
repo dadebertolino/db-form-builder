@@ -18,7 +18,7 @@ $has_file_fields = false;
 foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = true; break; } }
 ?>
 
-<form class="dbfb-form" 
+<form class="dbfb-form<?php echo DBFB_Appearance::has_background($form_settings) ? ' dbfb-has-bg' : ''; ?>"<?php echo DBFB_Appearance::style_attribute($form_settings); // già escapato ?>
       data-form-id="<?php echo esc_attr($form_id); ?>" 
       <?php if ($captcha_loaded && $recaptcha_version === 'v3'): ?>data-recaptcha-v3="1"<?php endif; ?>
       <?php if ($has_file_fields): ?>enctype="multipart/form-data"<?php endif; ?>
@@ -52,7 +52,7 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
     <div class="dbfb-multistep" data-total-steps="<?php echo $total_steps; ?>">
         <div class="dbfb-progress" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="<?php echo $total_steps; ?>" aria-label="<?php _e('Progresso form', 'db-form-builder'); ?>">
             <div class="dbfb-progress-bar" style="width: <?php echo round(100 / $total_steps); ?>%;">
-                <span class="dbfb-progress-text"><?php printf(__('Passo %d di %d', 'db-form-builder'), 1, $total_steps); ?></span>
+                <span class="dbfb-progress-text"><?php /* translators: 1: passo corrente, 2: numero totale di passi */ printf(esc_html__('Passo %1$s di %2$s', 'db-form-builder'), 1, (int) $total_steps); ?></span>
             </div>
         </div>
         <div class="dbfb-step dbfb-step-active" data-step="0">
@@ -279,7 +279,7 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
     <div class="dbfb-form-group dbfb-recaptcha-placeholder"
          role="region"
          aria-label="<?php esc_attr_e('Antispam non attivo', 'db-form-builder'); ?>"
-         style="padding:12px 16px;background:#f5f5f5;border:1px dashed #bbb;border-radius:4px;font-size:0.9em">
+         style="padding:12px 16px;background:color-mix(in srgb, var(--dbfb-text) 5%, transparent);border:1px dashed #767676;border-radius:4px;font-size:0.9em">
         <span aria-hidden="true">🔒</span>
         <strong><?php esc_html_e('Antispam reCAPTCHA non attivo', 'db-form-builder'); ?></strong>
         <p style="margin:6px 0 0">

@@ -49,6 +49,10 @@ class DBFB_Builder {
             // 2.7.0: secret HMAC opzionale. Se valorizzato, ogni delivery
             // viene firmata con HMAC-SHA256(secret, "{timestamp}.{body}").
             'webhook_secret' => '',
+            // 2.12.0: colori del form, '' = usa le impostazioni globali.
+            'color_bg' => '',
+            'color_primary' => '',
+            'color_text' => '',
         ];
 
         $form_settings = wp_parse_args($form_settings, $default_settings);
@@ -158,16 +162,22 @@ class DBFB_Builder {
             'rate_limit_window' => intval($settings['rate_limit_window'] ?? 60),
             'send_confirmation' => !empty($settings['send_confirmation']),
             'confirmation_subject' => sanitize_text_field($settings['confirmation_subject'] ?? ''),
-            'confirmation_message' => wp_kses_post($settings['confirmation_message'] ?? ''),
+            // 2.11.2: le email sono text/plain, niente HTML (wp_kses_post
+            // convertiva "&" in "&amp;" che finiva letterale nell'email).
+            'confirmation_message' => sanitize_textarea_field($settings['confirmation_message'] ?? ''),
             'send_admin_notification' => !empty($settings['send_admin_notification']),
             'admin_email' => sanitize_text_field($settings['admin_email'] ?? ''),
             'admin_subject' => sanitize_text_field($settings['admin_subject'] ?? ''),
-            'admin_message' => wp_kses_post($settings['admin_message'] ?? ''),
+            'admin_message' => sanitize_textarea_field($settings['admin_message'] ?? ''),
             'enable_webhook' => !empty($settings['enable_webhook']),
             'webhook_url' => esc_url_raw($settings['webhook_url'] ?? ''),
             // 2.7.0: secret HMAC. Sanitize: solo caratteri sicuri, max 128 char.
             // Non escape_html: deve restare letterale per il calcolo HMAC.
             'webhook_secret' => self::sanitize_webhook_secret($settings['webhook_secret'] ?? ''),
+            // 2.12.0: colori del form, '' = usa le impostazioni globali.
+            'color_bg' => DBFB_Appearance::sanitize_color($settings['color_bg'] ?? ''),
+            'color_primary' => DBFB_Appearance::sanitize_color($settings['color_primary'] ?? ''),
+            'color_text' => DBFB_Appearance::sanitize_color($settings['color_text'] ?? ''),
         ];
     }
 

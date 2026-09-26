@@ -54,6 +54,10 @@ class DBFB_Settings {
             'submissions_retention_days' => self::sanitize_retention_days($_POST['submissions_retention_days'] ?? 365),
             // Disinstallazione (2.3.1): opt-in per cancellazione totale dati.
             'delete_data_on_uninstall' => !empty($_POST['delete_data_on_uninstall']),
+            // Aspetto (2.12.0): colori del frontend, '' = predefinito.
+            'color_bg' => DBFB_Appearance::sanitize_color($_POST['color_bg'] ?? ''),
+            'color_primary' => DBFB_Appearance::sanitize_color($_POST['color_primary'] ?? ''),
+            'color_text' => DBFB_Appearance::sanitize_color($_POST['color_text'] ?? ''),
         ];
 
         update_option('dbfb_global_settings', $settings);

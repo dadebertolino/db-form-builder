@@ -26,7 +26,8 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
   - Dichiarazione automatica dei trattamenti al DB SEO Manager
 - **GDPR / Privacy** — Checkbox consenso obbligatorio con link alla Privacy Policy
 - **Limite invii per IP** — Configurabile per form (max N invii in X minuti), funziona anche con IP hashato/non salvato
-- **Email personalizzabili** — Conferma utente + notifica admin (più destinatari) con placeholder dinamici
+- **Email personalizzabili** — Conferma utente + notifica admin (più destinatari) con placeholder dinamici, inseribili con un clic dall'editor (2.12.0+)
+- **Colori personalizzabili (2.12.0+)** — Sfondo, pulsanti e testo del form, globali o per singolo form, con contrasto WCAG AA garantito sui pulsanti e avviso sul testo
 - **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, file come link scaricabili
 - **Duplica form** — Copia campi e impostazioni con un click
 - **Anteprima** — Visualizza il form nel builder prima di pubblicare
@@ -112,7 +113,7 @@ Quando uno o più di questi plugin sono installati, il Form Builder li sfrutta a
 
 Lo script Google reCAPTCHA viene caricato solo se l'utente ha dato consenso `marketing` (o se il sito non ha alcun consent manager). Quando il consenso manca:
 - Il widget reCAPTCHA è sostituito da un **placeholder informativo** che invita a modificare le preferenze cookie.
-- Il submit-side resta protetto da rate limit + honeypot (sempre attivi).
+- Lato server il limite invii per IP diventa obbligatorio (default 5 invii/60 minuti, o i valori del form) anche se non abilitato nelle impostazioni del form, più honeypot se attivo. Nota: il gate si basa sul consenso dichiarato dal browser, quindi un bot può sempre omettere il cookie e ricadere in questo percorso; il rate limit ne limita l'abuso (2.11.2+).
 - Quando l'utente accetta `marketing`, la pagina si ricarica automaticamente (listener su `dbcm:consent`) e il widget compare.
 
 Compatibile con: **DB Cookie Manager 3.0.0+**, qualsiasi plugin che esponga `wp_has_consent()` (Cookiebot, Complianz, Real Cookie Banner via WP Consent API). Per siti senza consent manager, il comportamento è identico alla 2.2.0 (carica sempre).
@@ -231,12 +232,28 @@ if abs(now() - int(timestamp_header)) > 300:  # max 5 min
 Pattern industry-standard usato da Stripe e GitHub. Il timestamp protegge da replay attack.
 
 ### Email
-Configura il mittente nelle Impostazioni globali. Personalizza oggetto e messaggio per ogni form. Più destinatari admin separati da virgola. Placeholder:
+Configura il mittente nelle Impostazioni globali (se l'indirizzo non è valido si usa il mittente predefinito di WordPress). Personalizza oggetto e messaggio per ogni form. Più destinatari admin separati da virgola. Le email sono in testo semplice.
+
+Sotto ogni email, nell'editor del form, c'è l'elenco dei segnaposto disponibili: un clic lo inserisce nell'oggetto o nel messaggio, dove si trova il cursore. Segnaposto:
+- `{campo:id}` — Valore di un singolo campo, identificato dal suo id: resta valido anche se l'etichetta viene rinominata. Se il campo viene eliminato, il segnaposto sparisce dall'email — **2.12.0+**
+- `{nome}`, `{email}`, ecc. — Formato precedente, ancora supportato: deriva dall'etichetta del campo e smette di funzionare se l'etichetta cambia
 - `{form_titolo}` — Nome del form
 - `{riepilogo_dati}` — Tutti i campi compilati
-- `{nome}`, `{email}`, ecc. — Singoli campi
 - `{ip}`, `{data}`, `{sito}`
 - `{privacy_url}` — URL informativa privacy del form (con fallback a quella globale WP) — **2.8.0+**
+
+I valori inseriti dagli utenti non vengono mai interpretati come segnaposto: chi scrive `{ip}` in un campo lo ritrova letterale nell'email (2.11.2+).
+
+### Aspetto (2.12.0+)
+In **Impostazioni → Aspetto del form** scegli tre colori: sfondo, pulsanti e testo. Ogni form può sovrascriverli dal pannello **Aspetto** dell'editor; un campo vuoto usa il livello superiore (form → globale → predefinito del plugin). Il resto viene calcolato:
+- **Testo dei pulsanti**: bianco o nero, quello con contrasto maggiore sul colore scelto (supera sempre 4.5:1).
+- **Hover dei pulsanti**: più scuro con testo bianco, più chiaro con testo nero.
+- **Link**: il colore dei pulsanti se leggibile sullo sfondo, altrimenti il colore del testo (i link restano sottolineati).
+- **Campi di input**: restano bianchi con testo scuro, così sono leggibili su qualunque sfondo.
+
+Un'anteprima mostra il risultato e un avviso segnala quando il contrasto testo/sfondo scende sotto 4.5:1. Con sfondo impostato il form riceve spazio interno e bordi arrotondati.
+
+Per stili avanzati il CSS del frontend espone le variabili `--dbfb-bg`, `--dbfb-text`, `--dbfb-text-muted`, `--dbfb-primary`, `--dbfb-primary-hover`, `--dbfb-button-text`, `--dbfb-link` su `.dbfb-form`.
 
 ## Utilizzo
 
@@ -271,6 +288,27 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.12.0 — Colori personalizzabili + segnaposto email cliccabili
+
+- **Aspetto:** sfondo, colore dei pulsanti e colore del testo del form si impostano in Impostazioni (globale) e per singolo form, con anteprima e avviso di contrasto. Testo e hover dei pulsanti e colore dei link vengono calcolati per restare WCAG AA. Il CSS del frontend usa ora variabili (`--dbfb-*`) al posto dei colori fissi; i valori predefiniti sono quelli di prima, quindi i form esistenti non cambiano aspetto.
+- **Segnaposto email per id campo:** nuovo formato `{campo:id}`, che non si rompe se l'etichetta viene rinominata. Il formato derivato dall'etichetta (`{nome}`) resta supportato; se due campi hanno la stessa etichetta vale il primo.
+- **Segnaposto cliccabili:** sotto ogni email dell'editor c'è l'elenco dei campi reali del form e dei segnaposto generali; un clic li inserisce nel punto del cursore.
+- **Traduzioni frontend:** i messaggi mostrati dal JavaScript del form (errori, file, reCAPTCHA, avanzamento multi-step) sono ora traducibili. L'avanzamento multi-step usa lo stesso testo del PHP ("Passo 1 di 3") invece di "1 / 3".
+- **Escape nella lista file:** il nome del file nell'`aria-label` del pulsante "Rimuovi" è ora escapato correttamente anche per le virgolette.
+
+### 2.11.2 — Fix sicurezza e privacy
+
+- **CSRF sull'eliminazione dei form:** il nonce era verificato solo se presente nella richiesta; un link senza `_wpnonce` aperto da un amministratore cancellava form e risposte. Ora il nonce è obbligatorio.
+- **Cancellazione di file arbitrari in `uploads/`:** il server accettava nei dati inviati anche chiavi che non corrispondevano a campi del form (e valori forgiati per i campi file), che la pulizia degli allegati trattava poi come file da cancellare. Ora le chiavi sconosciute e i valori dei campi file inviati dal client vengono scartati, e la cancellazione degli allegati agisce solo sui campi di tipo file e solo dentro `uploads/dbfb/`.
+- **reCAPTCHA saltato senza consenso:** quando il captcha è configurato ma non caricato per mancanza di consenso, il limite invii per IP diventa obbligatorio.
+- **Pagina Risposte:** lo script del dettaglio/selezione multipla non partiva per un apostrofo non escapato in una stringa tradotta. Tutte le stringhe inserite nel JavaScript (e nei `confirm()`) passano ora da `esc_js`.
+- **Impostazioni privacy non salvate:** modalità di salvataggio IP, retention e cancellazione dati alla disinstallazione non venivano inviate al salvataggio e tornavano ai valori predefiniti. Ora vengono salvate.
+- **DSAR (art. 17):** l'eraser paginava con `OFFSET` sulla stessa tabella da cui cancellava e saltava righe oltre le prime 100. Ora scorre i candidati con un cursore sull'id.
+- **Email in testo semplice:** i testi delle email venivano salvati con `wp_kses_post`, che converte `&` in `&amp;` e lascia passare i tag HTML: in un'email text/plain comparivano letterali. Ora vengono salvati come testo semplice e quelli già salvati vengono ripuliti all'invio.
+- **Segnaposto espansi a catena:** la sostituzione avveniva con `str_replace` in sequenza, quindi un valore scritto dall'utente che conteneva un segnaposto (es. `{ip}`) veniva a sua volta sostituito. Ora la sostituzione avviene in un solo passaggio (`strtr`).
+- **Mittente vuoto:** se l'email del mittente nelle impostazioni era vuota o non valida veniva generato `From: Nome <>` e tutte le email fallivano. Ora in quel caso si usa il mittente predefinito di WordPress.
+- **Webhook deliveries:** eliminazione del form, eliminazione singola/multipla/totale delle risposte, retention ed eraser DSAR cancellano ora anche le deliveries collegate, che contengono il payload completo della submission. L'eliminazione del form rimuove anche gli allegati su disco. L'id della submission collegato alla delivery viene letto subito dopo l'INSERT (prima poteva essere sovrascritto da plugin SMTP che loggano su DB).
 
 ### 2.11.1 — Fix sicurezza: sanitizzazione submission + escaping modale
 

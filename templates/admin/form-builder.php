@@ -248,6 +248,20 @@
                 </div>
             </div>
             
+            <!-- Aspetto (2.12.0) -->
+            <div class="dbfb-settings-panel">
+                <h3><?php _e('Aspetto', 'db-form-builder'); ?></h3>
+                <div class="dbfb-settings-content">
+                    <?php
+                    $appearance_prefix  = 'dbfb-';
+                    $appearance_values  = $form_settings;
+                    $appearance_inherit = DB_Form_Builder::get_global_settings();
+                    $appearance_empty   = __('Lascia vuoto per usare i colori impostati in Impostazioni → Aspetto del form.', 'db-form-builder');
+                    include DBFB_PLUGIN_DIR . 'templates/admin/partials/appearance-fields.php';
+                    ?>
+                </div>
+            </div>
+
             <!-- Email Conferma Utente -->
             <div class="dbfb-settings-panel">
                 <h3><?php _e('Email Conferma Utente', 'db-form-builder'); ?></h3>
@@ -268,7 +282,8 @@
                     <div class="dbfb-settings-row">
                         <label for="dbfb-confirmation-message"><?php _e('Messaggio', 'db-form-builder'); ?></label>
                         <textarea id="dbfb-confirmation-message" rows="6"><?php echo esc_textarea($form_settings['confirmation_message']); ?></textarea>
-                        <p class="description"><?php _e('Placeholder disponibili: {nome}, {email}, {riepilogo_dati}, {form_titolo}, {sito}, {data}', 'db-form-builder'); ?></p>
+                        <p class="description"><?php _e('Clicca un segnaposto per inserirlo nell\'oggetto o nel messaggio (dove si trova il cursore).', 'db-form-builder'); ?></p>
+                        <div class="dbfb-placeholder-list" data-context="confirmation" data-target="dbfb-confirmation-message" data-subject="dbfb-confirmation-subject"></div>
                     </div>
                     
                     <?php if ($form_id): ?>
@@ -310,7 +325,8 @@
                     <div class="dbfb-settings-row">
                         <label for="dbfb-admin-message"><?php _e('Messaggio', 'db-form-builder'); ?></label>
                         <textarea id="dbfb-admin-message" rows="6"><?php echo esc_textarea($form_settings['admin_message']); ?></textarea>
-                        <p class="description"><?php _e('Placeholder disponibili: {riepilogo_dati}, {form_titolo}, {ip}, {data}, {sito} e tutti i campi del form', 'db-form-builder'); ?></p>
+                        <p class="description"><?php _e('Clicca un segnaposto per inserirlo nell\'oggetto o nel messaggio (dove si trova il cursore).', 'db-form-builder'); ?></p>
+                        <div class="dbfb-placeholder-list" data-context="admin" data-target="dbfb-admin-message" data-subject="dbfb-admin-subject"></div>
                     </div>
                     
                     <?php if ($form_id): ?>

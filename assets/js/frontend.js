@@ -9,6 +9,35 @@
      * - WCAG 2.1 AA compliant
      */
     
+    // Stringhe tradotte (2.12.0): passate da PHP con wp_localize_script.
+    // I fallback in italiano servono solo se lo script viene caricato senza
+    // localizzazione (es. cache aggressive che separano JS e HTML).
+    var i18n = $.extend({
+        file_type: 'Formato non ammesso',
+        file_too_large: 'File troppo grande (max %s MB)',
+        remove_file: 'Rimuovi %s',
+        file_errors: 'Correggi gli errori nei file allegati prima di inviare.',
+        generic_error: 'Si è verificato un errore. Riprova.',
+        recaptcha_error: 'Errore reCAPTCHA. Ricarica la pagina e riprova.',
+        recaptcha_required: 'Completa la verifica "Non sono un robot"',
+        required: 'Questo campo è obbligatorio',
+        step_progress: 'Passo %1$s di %2$s'
+    }, (window.dbfb && window.dbfb.strings) || {});
+
+    function sprintf(tpl) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        var i = 0;
+        return String(tpl).replace(/%(?:(\d+)\$)?s/g, function(m, n) {
+            return n ? args[parseInt(n, 10) - 1] : args[i++];
+        });
+    }
+
+    function escHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     
     // =========================================================
@@ -195,14 +224,14 @@
                     if (isError) hasError = true;
                     
                     var errorMsg = '';
-                    if (!extOk) errorMsg = 'Formato non ammesso';
-                    else if (!sizeOk) errorMsg = 'File troppo grande (max ' + maxSizeMB + ' MB)';
+                    if (!extOk) errorMsg = i18n.file_type;
+                    else if (!sizeOk) errorMsg = sprintf(i18n.file_too_large, maxSizeMB);
                     
                     var $item = $('<div class="dbfb-file-item' + (isError ? ' dbfb-file-error' : '') + '">' +
-                        '<span class="dbfb-file-name">' + $('<span>').text(file.name).html() + '</span>' +
+                        '<span class="dbfb-file-name">' + escHtml(file.name) + '</span>' +
                         '<span class="dbfb-file-size">' + formatFileSize(file.size) + '</span>' +
-                        (errorMsg ? '<span class="dbfb-file-error-msg">' + errorMsg + '</span>' : '') +
-                        '<button type="button" class="dbfb-file-remove" data-index="' + i + '" aria-label="Rimuovi ' + $('<span>').text(file.name).html() + '">&times;</button>' +
+                        (errorMsg ? '<span class="dbfb-file-error-msg">' + escHtml(errorMsg) + '</span>' : '') +
+                        '<button type="button" class="dbfb-file-remove" data-index="' + i + '" aria-label="' + escHtml(sprintf(i18n.remove_file, file.name)) + '">&times;</button>' +
                     '</div>');
                     
                     $list.append($item);
@@ -331,7 +360,7 @@
             
             if ($dz.find('.dbfb-file-error').length) {
                 fileError = true;
-                showMessage($form, 'error', 'Correggi gli errori nei file allegati prima di inviare.');
+                showMessage($form, 'error', i18n.file_errors);
                 return false;
             }
         });
@@ -410,7 +439,7 @@
                                     $multistep.find('.dbfb-step').first().show().removeAttr('aria-hidden');
                                     var total = $multistep.find('.dbfb-step').length;
                                     $multistep.find('.dbfb-progress-bar').css('width', Math.round(100 / total) + '%');
-                                    $multistep.find('.dbfb-progress-text').text('1 / ' + total);
+                                    $multistep.find('.dbfb-progress-text').text(sprintf(i18n.step_progress, 1, total));
                                     $multistep.find('.dbfb-progress').attr('aria-valuenow', 1);
                                     
                                     // Show form elements again
@@ -443,7 +472,7 @@
                 },
                 error: function(xhr, status, error) {
                     console.error('DBFB Error:', status, error);
-                    showMessage($form, 'error', 'Si è verificato un errore. Riprova.');
+                    showMessage($form, 'error', i18n.generic_error);
                 },
                 complete: function() {
                     setLoadingState($form, false);
@@ -459,13 +488,13 @@
                         submitForm(token);
                     }).catch(function(err) {
                         console.error('reCAPTCHA v3 error:', err);
-                        showMessage($form, 'error', 'Errore reCAPTCHA. Ricarica la pagina e riprova.');
+                        showMessage($form, 'error', i18n.recaptcha_error);
                     });
                 });
             } else if (hasV2Widget) {
                 var response = grecaptcha.getResponse();
                 if (!response) {
-                    showMessage($form, 'error', 'Completa la verifica "Non sono un robot"');
+                    showMessage($form, 'error', i18n.recaptcha_required);
                     return;
                 }
                 submitForm(response);
@@ -525,9 +554,7 @@
                 // Update progress
                 var pct = Math.round(((currentStep + 1) / totalSteps) * 100);
                 $progressBar.css('width', pct + '%');
-                $progressText.text(
-                    (currentStep + 1) + ' / ' + totalSteps
-                );
+                $progressText.text(sprintf(i18n.step_progress, currentStep + 1, totalSteps));
                 $progress.attr('aria-valuenow', currentStep + 1);
                 
                 // Scroll to top of form
@@ -576,7 +603,7 @@
                             $input.attr('aria-invalid', 'true');
                             var $errorDiv = $group.find('.dbfb-field-error');
                             if ($errorDiv.length && !$errorDiv.text()) {
-                                $errorDiv.text('Questo campo è obbligatorio');
+                                $errorDiv.text(i18n.required);
                             }
                         }
                     });

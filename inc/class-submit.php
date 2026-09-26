@@ -55,11 +55,25 @@ class DBFB_Submit {
             }
         }
 
+        // reCAPTCHA (2.11.2): distinguiamo "configurato" da "attivo per questo
+        // visitatore". Se è configurato ma il consent gate lo ha disattivato,
+        // il server non può pretendere il token (l'utente legittimo non ha
+        // mai visto il widget), ma un bot potrebbe omettere il cookie di
+        // consenso proprio per saltarlo: in quel caso il rate limit diventa
+        // obbligatorio, anche se non abilitato nelle impostazioni del form.
+        $captcha_active     = DB_Form_Builder::should_load_recaptcha($form_settings);
+        $captcha_configured = !empty($form_settings['enable_captcha'])
+            && !empty($global_settings['recaptcha_site_key'])
+            && !empty($global_settings['recaptcha_secret_key']);
+        $captcha_fallback   = $captcha_configured && !$captcha_active;
+
         // Rate limiting
-        if (!empty($form_settings['rate_limit_enabled'])) {
+        if (!empty($form_settings['rate_limit_enabled']) || $captcha_fallback) {
             $ip = DB_Form_Builder::get_client_ip();
             $max_submissions = intval($form_settings['rate_limit_max'] ?? 5);
             $window_minutes = intval($form_settings['rate_limit_window'] ?? 60);
+            if ($max_submissions <= 0) $max_submissions = 5;
+            if ($window_minutes <= 0) $window_minutes = 60;
 
             // Usiamo l'hash dell'IP come chiave del transient anche in
             // modalità storage 'none' / 'hashed': il rate limit non ha
@@ -134,7 +148,7 @@ class DBFB_Submit {
         // Le difese di base (honeypot + rate limit) restano sempre attive
         // sopra, quindi il form è comunque protetto da bot rudimentali
         // anche senza reCAPTCHA.
-        if (DB_Form_Builder::should_load_recaptcha($form_settings)) {
+        if ($captcha_active) {
             if (!self::verify_recaptcha($recaptcha_token, $global_settings['recaptcha_secret_key'])) {
                 wp_send_json_error(['message' => __('Verifica anti-spam fallita. Riprova.', 'db-form-builder')]);
             }
@@ -238,6 +252,11 @@ class DBFB_Submit {
             'gdpr_consent_policy_version' => $gdpr_consent_policy_version,
         ]);
 
+        // 2.11.2: leggiamo l'id subito dopo l'INSERT. Più avanti wp_mail può
+        // far girare plugin SMTP che scrivono log su DB e sovrascrivono
+        // $wpdb->insert_id, collegando la delivery alla submission sbagliata.
+        $submission_id = ($result === false) ? 0 : (int) $wpdb->insert_id;
+
         if ($result === false && defined('WP_DEBUG') && WP_DEBUG) {
             // Loghiamo solo in debug per evitare di sporcare i log di
             // produzione. Il chiamante riceve comunque il success message,
@@ -271,7 +290,6 @@ class DBFB_Submit {
         // del destinatario, retry automatico su fallimento, dead-letter queue
         // visibile in admin.
         if (!empty($form_settings['enable_webhook']) && !empty($form_settings['webhook_url'])) {
-            $submission_id = (int) $wpdb->insert_id;
             $payload = DBFB_Webhook::build_payload($form, $form_fields, $form_data, $client_ip);
             DBFB_Webhook::enqueue(
                 $form_id,
@@ -392,13 +410,27 @@ class DBFB_Submit {
                 continue;
             }
 
-            $type = $types[$key] ?? 'text';
+            // Sicurezza (2.11.2): scartiamo le chiavi che non corrispondono a
+            // un campo del form. Senza questo filtro un client poteva
+            // iniettare strutture arbitrarie (es. {"path": "..."}) che
+            // delete_submission_files avrebbe poi trattato come allegati.
+            if (!isset($types[$key])) {
+                continue;
+            }
+            $type = $types[$key];
+
+            // I valori dei campi file sono costruiti server-side da
+            // process_file_uploads(): quelli inviati dal client si ignorano.
+            if ($type === 'file') {
+                continue;
+            }
 
             if (is_array($value)) {
-                // Checkbox multipli o liste di scalari.
-                $clean[$key] = array_map(function ($v) {
+                // Checkbox multipli o liste di scalari. array_values scarta
+                // eventuali chiavi associative inviate dal client.
+                $clean[$key] = array_values(array_map(function ($v) {
                     return is_scalar($v) ? sanitize_text_field((string) $v) : '';
-                }, $value);
+                }, $value));
                 continue;
             }
 

@@ -58,7 +58,7 @@
                                 <?php _e('Duplica', 'db-form-builder'); ?>
                             </a>
                             <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=dbfb-forms&action=delete&form_id=' . $form->ID), 'dbfb_delete_' . $form->ID); ?>" 
-                               onclick="return confirm('<?php _e('Sei sicuro di voler eliminare questo form e tutte le sue risposte? Questa azione è irreversibile.', 'db-form-builder'); ?>');"
+                               onclick="return confirm('<?php echo esc_js(__('Sei sicuro di voler eliminare questo form e tutte le sue risposte? Questa azione è irreversibile.', 'db-form-builder')); ?>');"
                                style="color: #d63638;">
                                 <?php _e('Elimina', 'db-form-builder'); ?>
                             </a>

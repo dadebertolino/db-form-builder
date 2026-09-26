@@ -257,6 +257,18 @@
                 </table>
             </div>
 
+            <!-- Aspetto (2.12.0) -->
+            <div class="dbfb-settings-section">
+                <h2><?php _e('Aspetto del form', 'db-form-builder'); ?></h2>
+                <?php
+                $appearance_prefix  = '';
+                $appearance_values  = $global_settings;
+                $appearance_inherit = array();
+                $appearance_empty   = __('Lascia vuoto per usare i colori predefiniti del plugin (sfondo trasparente, pulsanti blu, testo scuro). Ogni form può sovrascrivere questi colori dal proprio editor.', 'db-form-builder');
+                include DBFB_PLUGIN_DIR . 'templates/admin/partials/appearance-fields.php';
+                ?>
+            </div>
+
             <div class="dbfb-settings-section">
                 <h2><?php _e('Riferimento Placeholder', 'db-form-builder'); ?></h2>
                 <p class="description">
@@ -273,7 +285,9 @@
                     <tbody>
                         <tr><td><code>{form_titolo}</code></td><td><?php _e('Nome del form', 'db-form-builder'); ?></td></tr>
                         <tr><td><code>{riepilogo_dati}</code></td><td><?php _e('Elenco completo di tutti i campi compilati', 'db-form-builder'); ?></td></tr>
-                        <tr><td><code>{nome}</code>, <code>{email}</code>, ecc.</td><td><?php _e('Valore del singolo campo (usa il nome del campo)', 'db-form-builder'); ?></td></tr>
+                        <tr><td><code>{campo:id}</code></td><td><?php _e('Valore del singolo campo. Nell\'editor del form, sotto ogni email, trovi l\'elenco dei campi da inserire con un clic: il segnaposto resta valido anche se rinomini l\'etichetta.', 'db-form-builder'); ?></td></tr>
+                        <tr><td><code>{nome}</code>, <code>{email}</code>, ecc.</td><td><?php _e('Formato precedente, ancora supportato: deriva dall\'etichetta del campo e smette di funzionare se l\'etichetta cambia.', 'db-form-builder'); ?></td></tr>
+                        <tr><td><code>{privacy_url}</code></td><td><?php _e('Link all\'informativa privacy del form (o a quella del sito)', 'db-form-builder'); ?></td></tr>
                         <tr><td><code>{ip}</code></td><td><?php _e('Indirizzo IP del visitatore (rispetta la modalità "Salvataggio IP" sopra: hash, vuoto, o IP in chiaro)', 'db-form-builder'); ?></td></tr>
                         <tr><td><code>{data}</code></td><td><?php _e('Data e ora dell\'invio', 'db-form-builder'); ?></td></tr>
                         <tr><td><code>{sito}</code></td><td><?php _e('Nome del sito', 'db-form-builder'); ?></td></tr>
@@ -415,7 +429,11 @@ jQuery(document).ready(function($) {
         $.post(dbfb.ajax_url, {
             action: 'dbfb_save_global_settings', nonce: dbfb.nonce,
             recaptcha_version: $('#recaptcha_version').val(), recaptcha_site_key: $('#recaptcha_site_key').val(),
-            recaptcha_secret_key: $('#recaptcha_secret_key').val(), from_email: $('#from_email').val(), from_name: $('#from_name').val()
+            recaptcha_secret_key: $('#recaptcha_secret_key').val(), from_email: $('#from_email').val(), from_name: $('#from_name').val(),
+            ip_storage_mode: $('#ip_storage_mode').val(),
+            submissions_retention_days: $('#submissions_retention_days').val(),
+            delete_data_on_uninstall: $('#delete_data_on_uninstall').is(':checked') ? 1 : '',
+            color_bg: $('#color-bg').val(), color_primary: $('#color-primary').val(), color_text: $('#color-text').val()
         })
         .done(function(response) {
             if (response.success) {

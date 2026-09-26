@@ -3,7 +3,7 @@
  * Plugin Name: DB Form Builder
  * Plugin URI: https://www.davidebertolino.it
  * Description: Form builder con drag & drop, logica condizionale, reCAPTCHA gated dal consenso, email personalizzabili, export CSV con header esplicativi. Privacy by design: IP hashato, retention con pulizia allegati, snapshot fields, integrazione DSAR WordPress + DB Privacy Hub, informativa privacy per singolo form, monitoraggio conformità consenso GDPR. Webhook async con retry + HMAC signing.
- * Version: 2.11.1
+ * Version: 2.12.0
  * Author: Davide Bertolino
  * Author URI: https://www.davidebertolino.it
  * Text Domain: db-form-builder
@@ -14,7 +14,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DBFB_VERSION', '2.11.1');
+define('DBFB_VERSION', '2.12.0');
 define('DBFB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DBFB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBFB_PLUGIN_FILE', __FILE__);
@@ -33,6 +33,8 @@ require_once DBFB_PLUGIN_DIR . 'inc/class-builder.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-submit.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-submissions.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-email.php';
+// Aspetto (2.12.0): colori del frontend come variabili CSS.
+require_once DBFB_PLUGIN_DIR . 'inc/class-appearance.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-settings.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-gutenberg.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-widget.php';

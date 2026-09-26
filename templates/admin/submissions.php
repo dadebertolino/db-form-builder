@@ -47,7 +47,7 @@
                     <?php _e('Seleziona tutti', 'db-form-builder'); ?>
                 </label>
                 <button type="submit" name="dbfb_bulk_action" value="delete" class="button" id="dbfb-bulk-delete" style="display:none;"
-                        onclick="return confirm('<?php _e('Eliminare le risposte selezionate? Azione irreversibile.', 'db-form-builder'); ?>');">
+                        onclick="return confirm('<?php echo esc_js(__('Eliminare le risposte selezionate? Azione irreversibile.', 'db-form-builder')); ?>');">
                     <?php _e('Elimina selezionate', 'db-form-builder'); ?>
                 </button>
 
@@ -55,11 +55,11 @@
                 <button type="submit" name="dbfb_bulk_action" value="delete_all" class="button"
                         style="margin-left:auto;color:#a00"
                         onclick="return confirm('<?php
-                            printf(
+                            echo esc_js(sprintf(
                                 /* translators: %d: numero submission del form */
-                                esc_attr__('Stai per cancellare TUTTE le %d risposte di questo form. L\'operazione è irreversibile e cancella anche gli IP, gli allegati e tutti i dati associati. Continuare?', 'db-form-builder'),
+                                __('Stai per cancellare TUTTE le %d risposte di questo form. L\'operazione è irreversibile e cancella anche gli IP, gli allegati e tutti i dati associati. Continuare?', 'db-form-builder'),
                                 count($submissions)
-                            );
+                            ));
                         ?>');">
                     🗑️ <?php
                     printf(
@@ -172,7 +172,7 @@
                                     admin_url('admin.php?page=dbfb-forms&action=delete_submission&submission_id=' . $submission->id . '&form_id=' . $form_id),
                                     'dbfb_delete_sub_' . $submission->id
                                 ); ?>"
-                                   onclick="return confirm('<?php _e('Eliminare questa risposta?', 'db-form-builder'); ?>');"
+                                   onclick="return confirm('<?php echo esc_js(__('Eliminare questa risposta?', 'db-form-builder')); ?>');"
                                    style="color: #d63638;">
                                     <?php _e('Elimina', 'db-form-builder'); ?>
                                 </a>
@@ -210,7 +210,7 @@ jQuery(document).ready(function($) {
         var checked = $('.dbfb-sub-checkbox:checked').length;
         $('#dbfb-bulk-delete').toggle(checked > 0);
         if (checked > 0) {
-            $('#dbfb-bulk-delete').text('<?php _e('Elimina selezionate', 'db-form-builder'); ?> (' + checked + ')');
+            $('#dbfb-bulk-delete').text('<?php echo esc_js(__('Elimina selezionate', 'db-form-builder')); ?> (' + checked + ')');
         }
     }
     
@@ -225,11 +225,11 @@ jQuery(document).ready(function($) {
         var labels = JSON.parse($link.attr('data-labels'));
         
         var html = '<table class="widefat" style="border:0;">';
-        html += '<tr><th style="width:35%;"><?php _e('Data', 'db-form-builder'); ?></th><td>' + $link.data('date') + '</td></tr>';
+        html += '<tr><th style="width:35%;"><?php echo esc_js(__('Data', 'db-form-builder')); ?></th><td>' + $link.data('date') + '</td></tr>';
         var ipTooltip = $link.attr('data-ip-tooltip') || '';
         var ipCell = '<code style="font-size:11px;background:#f5f5f5;padding:2px 6px;border-radius:3px">' + ($link.data('ip') || '') + '</code>';
         if (ipTooltip) ipCell += ' <span style="color:#888;font-size:11px;margin-left:6px" title="' + ipTooltip.replace(/"/g, '&quot;') + '">ⓘ</span>';
-        html += '<tr><th><?php _e('IP', 'db-form-builder'); ?></th><td>' + ipCell + '</td></tr>';
+        html += '<tr><th><?php echo esc_js(__('IP', 'db-form-builder')); ?></th><td>' + ipCell + '</td></tr>';
 
         // 2.11.0: blocco "Consenso GDPR" — solo se documentato
         var gdprGiven     = $link.attr('data-gdpr-given');
@@ -239,24 +239,24 @@ jQuery(document).ready(function($) {
         var gdprVersion   = parseInt($link.attr('data-gdpr-version') || '0', 10);
         var consentBlock = '';
         if (gdprGiven === '1') {
-            consentBlock += '<tr style="background:#f0fdf4"><th colspan="2" style="padding-top:14px;border-top:2px solid #16a34a;color:#166534">' + '<?php _e('✓ Consenso GDPR documentato', 'db-form-builder'); ?>' + '</th></tr>';
-            consentBlock += '<tr><th><?php _e('Testo letto', 'db-form-builder'); ?></th><td>' + $('<div>').text(gdprText).html() + '</td></tr>';
-            consentBlock += '<tr><th><?php _e('Timestamp consenso', 'db-form-builder'); ?></th><td><code>' + gdprTimestamp + '</code></td></tr>';
+            consentBlock += '<tr style="background:#f0fdf4"><th colspan="2" style="padding-top:14px;border-top:2px solid #16a34a;color:#166534">' + '<?php echo esc_js(__('✓ Consenso GDPR documentato', 'db-form-builder')); ?>' + '</th></tr>';
+            consentBlock += '<tr><th><?php echo esc_js(__('Testo letto', 'db-form-builder')); ?></th><td>' + $('<div>').text(gdprText).html() + '</td></tr>';
+            consentBlock += '<tr><th><?php echo esc_js(__('Timestamp consenso', 'db-form-builder')); ?></th><td><code>' + gdprTimestamp + '</code></td></tr>';
             if (gdprUrl) {
-                consentBlock += '<tr><th><?php _e('Privacy Policy linkata', 'db-form-builder'); ?></th><td><a href="' + gdprUrl + '" target="_blank" rel="noopener">' + gdprUrl + '</a></td></tr>';
+                consentBlock += '<tr><th><?php echo esc_js(__('Privacy Policy linkata', 'db-form-builder')); ?></th><td><a href="' + gdprUrl + '" target="_blank" rel="noopener">' + gdprUrl + '</a></td></tr>';
             }
             if (gdprVersion > 0) {
-                consentBlock += '<tr><th><?php _e('Versione documento', 'db-form-builder'); ?></th><td><code>v#' + gdprVersion + '</code> ' + '<span style="color:#666;font-size:12px"><?php _e('(snapshot Privacy Hub)', 'db-form-builder'); ?></span></td></tr>';
+                consentBlock += '<tr><th><?php echo esc_js(__('Versione documento', 'db-form-builder')); ?></th><td><code>v#' + gdprVersion + '</code> ' + '<span style="color:#666;font-size:12px"><?php echo esc_js(__('(snapshot Privacy Hub)', 'db-form-builder')); ?></span></td></tr>';
             }
         } else if (gdprGiven === '0') {
-            consentBlock += '<tr style="background:#fef3c7"><th colspan="2" style="padding-top:14px;border-top:2px solid #d97706;color:#92400e">' + '<?php _e('⚠ Form senza checkbox di consenso (scelta intenzionale)', 'db-form-builder'); ?></th></tr>';
-            consentBlock += '<tr><th><?php _e('Nota', 'db-form-builder'); ?></th><td>' + $('<div>').text(gdprText).html() + '</td></tr>';
+            consentBlock += '<tr style="background:#fef3c7"><th colspan="2" style="padding-top:14px;border-top:2px solid #d97706;color:#92400e">' + '<?php echo esc_js(__('⚠ Form senza checkbox di consenso (scelta intenzionale)', 'db-form-builder')); ?></th></tr>';
+            consentBlock += '<tr><th><?php echo esc_js(__('Nota', 'db-form-builder')); ?></th><td>' + $('<div>').text(gdprText).html() + '</td></tr>';
             if (gdprTimestamp) {
-                consentBlock += '<tr><th><?php _e('Timestamp', 'db-form-builder'); ?></th><td><code>' + gdprTimestamp + '</code></td></tr>';
+                consentBlock += '<tr><th><?php echo esc_js(__('Timestamp', 'db-form-builder')); ?></th><td><code>' + gdprTimestamp + '</code></td></tr>';
             }
         } else {
-            consentBlock += '<tr style="background:#fef2f2"><th colspan="2" style="padding-top:14px;border-top:2px solid #dc2626;color:#991b1b">' + '<?php _e('✗ Consenso GDPR non documentato', 'db-form-builder'); ?></th></tr>';
-            consentBlock += '<tr><td colspan="2" style="font-size:13px;color:#666"><?php _e('Submission inserita prima dell\'aggiornamento alla 2.11.0 oppure form privo di checkbox di consenso senza dichiarazione consapevole. La conformità GDPR per questa specifica submission non è documentabile.', 'db-form-builder'); ?></td></tr>';
+            consentBlock += '<tr style="background:#fef2f2"><th colspan="2" style="padding-top:14px;border-top:2px solid #dc2626;color:#991b1b">' + '<?php echo esc_js(__('✗ Consenso GDPR non documentato', 'db-form-builder')); ?></th></tr>';
+            consentBlock += '<tr><td colspan="2" style="font-size:13px;color:#666"><?php echo esc_js(__('Submission inserita prima dell\'aggiornamento alla 2.11.0 oppure form privo di checkbox di consenso senza dichiarazione consapevole. La conformità GDPR per questa specifica submission non è documentabile.', 'db-form-builder')); ?></td></tr>';
         }
         html += consentBlock;
         
@@ -294,7 +294,7 @@ jQuery(document).ready(function($) {
         }
         html += '</table>';
         
-        $('#dbfb-modal-title').text('<?php _e('Risposta', 'db-form-builder'); ?> #' + $link.data('id'));
+        $('#dbfb-modal-title').text('<?php echo esc_js(__('Risposta', 'db-form-builder')); ?> #' + $link.data('id'));
         $('#dbfb-modal-content').html(html);
         $('#dbfb-submission-modal').fadeIn(200);
         

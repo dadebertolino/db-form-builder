@@ -14,8 +14,30 @@
 }
 
 .dbfb-form {
+    /*
+     * Colori (2.12.0): personalizzabili da Impostazioni → Aspetto o per
+     * singolo form. DBFB_Appearance sovrascrive queste variabili con uno
+     * style inline sul tag <form>. I default sono i colori storici,
+     * verificati WCAG AA su sfondo bianco.
+     */
+    --dbfb-bg: transparent;
+    --dbfb-text: #1a1a1a;          /* 16:1 su bianco */
+    --dbfb-text-muted: #5a5a5a;    /* 7:1 su bianco */
+    --dbfb-primary: #0056b3;       /* 7:1 con testo bianco */
+    --dbfb-primary-hover: #003d80;
+    --dbfb-button-text: #fff;
+    --dbfb-link: var(--dbfb-primary);
+
     max-width: 600px;
     margin: 0 auto;
+    background: var(--dbfb-bg);
+    color: var(--dbfb-text);
+}
+
+/* Form con sfondo proprio: spazio interno perché il testo non tocchi i bordi */
+.dbfb-form.dbfb-has-bg {
+    padding: 24px;
+    border-radius: 8px;
 }
 
 /* Fieldset reset for checkbox/radio groups */
@@ -29,7 +51,7 @@
     display: block;
     margin-bottom: 6px;
     font-weight: 500;
-    color: #1a1a1a; /* contrast ratio 16:1 on white */
+    color: var(--dbfb-text);
     padding: 0;
     font-size: inherit;
 }
@@ -42,7 +64,7 @@
     display: block;
     margin-bottom: 6px;
     font-weight: 500;
-    color: #1a1a1a; /* WCAG 1.4.3: contrast ratio 16:1 */
+    color: var(--dbfb-text);
 }
 
 .dbfb-form-group label .required {
@@ -72,9 +94,9 @@
 .dbfb-form-group input:focus-visible,
 .dbfb-form-group textarea:focus-visible,
 .dbfb-form-group select:focus-visible {
-    outline: 3px solid #0056b3;
+    outline: 3px solid var(--dbfb-primary);
     outline-offset: 1px;
-    border-color: #0056b3;
+    border-color: var(--dbfb-primary);
     box-shadow: none;
 }
 
@@ -82,9 +104,9 @@
 .dbfb-form-group input:focus,
 .dbfb-form-group textarea:focus,
 .dbfb-form-group select:focus {
-    outline: 3px solid #0056b3;
+    outline: 3px solid var(--dbfb-primary);
     outline-offset: 1px;
-    border-color: #0056b3;
+    border-color: var(--dbfb-primary);
     box-shadow: none;
 }
 
@@ -93,8 +115,8 @@
 .dbfb-form-group textarea:focus:not(:focus-visible),
 .dbfb-form-group select:focus:not(:focus-visible) {
     outline: none;
-    border-color: #2271b1;
-    box-shadow: 0 0 0 1px #2271b1;
+    border-color: var(--dbfb-primary);
+    box-shadow: 0 0 0 1px var(--dbfb-primary);
 }
 
 .dbfb-form-group textarea {
@@ -136,7 +158,7 @@
 /* Focus for checkboxes/radios */
 .dbfb-checkbox-item input:focus-visible,
 .dbfb-radio-item input:focus-visible {
-    outline: 3px solid #0056b3;
+    outline: 3px solid var(--dbfb-primary);
     outline-offset: 2px;
 }
 
@@ -145,15 +167,15 @@
     margin: 0;
     font-weight: normal;
     cursor: pointer;
-    color: #1a1a1a;
+    color: var(--dbfb-text);
 }
 
 /* Submit button — WCAG 2.5.5: min 44x44 touch target */
 .dbfb-submit {
     padding: 12px 30px;
     min-height: 44px;
-    background: #0056b3; /* contrast ratio 8.6:1 with white text */
-    color: #fff;
+    background: var(--dbfb-primary);
+    color: var(--dbfb-button-text);
     border: none;
     border-radius: 4px;
     font-size: 16px;
@@ -164,11 +186,11 @@
 }
 
 .dbfb-submit:hover {
-    background: #003d80;
+    background: var(--dbfb-primary-hover);
 }
 
 .dbfb-submit:focus-visible {
-    outline: 3px solid #0056b3;
+    outline: 3px solid var(--dbfb-primary);
     outline-offset: 3px;
 }
 
@@ -204,7 +226,7 @@
     width: 18px;
     height: 18px;
     margin-top: -9px;
-    border: 2px solid #fff;
+    border: 2px solid var(--dbfb-button-text);
     border-top-color: transparent;
     border-radius: 50%;
     animation: dbfb-spin 0.8s linear infinite;
@@ -238,7 +260,7 @@
 }
 
 .dbfb-message:focus {
-    outline: 3px solid #0056b3;
+    outline: 3px solid var(--dbfb-primary);
     outline-offset: 2px;
 }
 
@@ -291,7 +313,7 @@
 .dbfb-html-content {
     margin-bottom: 20px;
     line-height: 1.6;
-    color: #1a1a1a;
+    color: var(--dbfb-text);
 }
 
 .dbfb-image-content {
@@ -308,30 +330,37 @@
 /* reCAPTCHA notice */
 .dbfb-recaptcha-notice {
     margin-top: 15px;
-    color: #5a5a5a; /* 7:1 contrast ratio */
+    color: var(--dbfb-text-muted);
     font-size: 13px;
 }
 
 .dbfb-recaptcha-notice a {
-    color: #0056b3;
+    color: var(--dbfb-link);
     text-decoration: underline; /* WCAG 1.4.1: link distinguishable not only by color */
 }
 
 .dbfb-recaptcha-notice a:hover,
 .dbfb-recaptcha-notice a:focus {
-    color: #003d80;
+    color: var(--dbfb-link);
+}
+
+/* Placeholder reCAPTCHA senza consenso */
+.dbfb-recaptcha-placeholder a {
+    color: var(--dbfb-link);
+    text-decoration: underline;
 }
 
 /* GDPR checkbox */
 .dbfb-gdpr-group {
     padding: 12px 15px;
-    background: #f9f9f9;
+    /* Leggera velatura del colore del testo: funziona su sfondi chiari e scuri */
+    background: color-mix(in srgb, var(--dbfb-text) 5%, transparent);
     border: 1px solid #767676;
     border-radius: 4px;
 }
 
 .dbfb-gdpr-group a {
-    color: #0056b3;
+    color: var(--dbfb-link);
     margin-left: 5px;
     text-decoration: underline;
 }
@@ -391,23 +420,23 @@
 
 .dbfb-file-dropzone:hover,
 .dbfb-file-dropzone:focus-visible {
-    border-color: #0056b3;
-    background: #f0f6fc;
+    border-color: var(--dbfb-primary);
+    background: color-mix(in srgb, var(--dbfb-primary) 8%, transparent);
 }
 
 .dbfb-file-dropzone.dbfb-file-dragover {
-    border-color: #0056b3;
-    background: #e3effa;
+    border-color: var(--dbfb-primary);
+    background: color-mix(in srgb, var(--dbfb-primary) 14%, transparent);
     border-style: solid;
 }
 
 .dbfb-file-dropzone.dbfb-file-has-files {
     border-style: solid;
-    border-color: #0056b3;
+    border-color: var(--dbfb-primary);
 }
 
 .dbfb-file-dropzone:focus-visible {
-    outline: 3px solid #0056b3;
+    outline: 3px solid var(--dbfb-primary);
     outline-offset: 2px;
 }
 
@@ -425,7 +454,7 @@
 }
 
 .dbfb-file-text {
-    color: #5a5a5a;
+    color: var(--dbfb-text-muted);
     font-size: 14px;
 }
 
@@ -442,7 +471,7 @@
 
 .dbfb-file-info {
     font-size: 12px;
-    color: #5a5a5a;
+    color: var(--dbfb-text-muted);
     margin-top: 6px;
 }
 
@@ -511,7 +540,7 @@
 }
 
 .dbfb-file-remove:focus-visible {
-    outline: 3px solid #0056b3;
+    outline: 3px solid var(--dbfb-primary);
     outline-offset: 1px;
 }
 
@@ -551,7 +580,7 @@
 }
 
 .dbfb-progress-bar {
-    background: #0056b3;
+    background: var(--dbfb-primary);
     height: 100%;
     border-radius: 8px;
     transition: width 0.3s ease;
@@ -562,7 +591,7 @@
 }
 
 .dbfb-progress-text {
-    color: #fff;
+    color: var(--dbfb-button-text);
     font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
@@ -603,18 +632,18 @@
 }
 
 .dbfb-step-next {
-    background: #0056b3;
-    color: #fff;
+    background: var(--dbfb-primary);
+    color: var(--dbfb-button-text);
     margin-left: auto;
 }
 
 .dbfb-step-next:hover {
-    background: #003d80;
+    background: var(--dbfb-primary-hover);
 }
 
 .dbfb-step-prev:focus-visible,
 .dbfb-step-next:focus-visible {
-    outline: 3px solid #0056b3;
+    outline: 3px solid var(--dbfb-primary);
     outline-offset: 3px;
 }
 

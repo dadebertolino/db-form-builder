@@ -497,3 +497,89 @@
 .dbfb-condition-rule .dbfb-remove-condition-rule:hover {
     color: #a00;
 }
+
+/* =========================================================
+   Aspetto (2.12.0): color picker, anteprima, avviso contrasto
+   ========================================================= */
+.dbfb-appearance-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 24px;
+    margin-bottom: 10px;
+}
+
+.dbfb-appearance-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.dbfb-appearance-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: 360px;
+    margin-top: 12px;
+    padding: 16px;
+    border: 1px dashed #c3c4c7;
+    border-radius: 8px;
+}
+
+.dbfb-appearance-preview-label {
+    font-weight: 500;
+}
+
+.dbfb-appearance-preview-input {
+    align-self: stretch;
+    padding: 8px 10px;
+    background: #fff;
+    color: #5a5a5a;
+    border: 1px solid #767676;
+    border-radius: 4px;
+}
+
+.dbfb-appearance-preview-link {
+    text-decoration: underline;
+}
+
+.dbfb-appearance-preview-button {
+    padding: 8px 20px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.dbfb-appearance-warning {
+    display: none;
+    max-width: 600px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #fcf9e8;
+    border-left: 4px solid #dba617;
+    color: #1d2327;
+}
+
+/* =========================================================
+   Segnaposto email cliccabili (2.12.0)
+   ========================================================= */
+.dbfb-placeholder-list {
+    margin-top: 8px;
+}
+
+.dbfb-placeholder-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.dbfb-placeholder-group-title {
+    width: 100%;
+    font-size: 12px;
+    color: #50575e;
+}
+
+.dbfb-placeholder-chip.button.button-small {
+    min-height: 28px;
+}

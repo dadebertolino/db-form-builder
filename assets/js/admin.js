@@ -361,7 +361,9 @@
             
             // Submit button
             const submitText = $('#dbfb-submit-text').val() || 'Invia';
-            html += '<div style="margin-top:20px;"><button type="button" style="padding:12px 30px; background:#2271b1; color:#fff; border:none; border-radius:4px; font-size:16px; cursor:default;">' + this.escapeHtml(submitText) + '</button></div>';
+            // 2.12.0: l'anteprima usa i colori effettivi del form (Aspetto).
+            const colors = DBFBAppearance.effective($('.dbfb-appearance').first());
+            html += '<div style="margin-top:20px;"><button type="button" style="padding:12px 30px; background:' + colors.primary + '; color:' + colors.buttonText + '; border:none; border-radius:4px; font-size:16px; cursor:default;">' + this.escapeHtml(submitText) + '</button></div>';
             
             $('#dbfb-preview-content').html(html);
             $('#dbfb-preview-modal').fadeIn(200);
@@ -789,7 +791,10 @@
                 admin_message: $('#dbfb-admin-message').val(),
                 enable_webhook: $('#dbfb-enable-webhook').is(':checked'),
                 webhook_url: $('#dbfb-webhook-url').val(),
-                webhook_secret: $('#dbfb-webhook-secret').val()
+                webhook_secret: $('#dbfb-webhook-secret').val(),
+                color_bg: $('#dbfb-color-bg').val(),
+                color_primary: $('#dbfb-color-primary').val(),
+                color_text: $('#dbfb-color-text').val()
             };
             
             const $btn = $('#dbfb-save-form');
@@ -825,10 +830,158 @@
         }
     };
 
+    // =========================================================
+    // ASPETTO (2.12.0): color picker, anteprima, contrasto WCAG.
+    // La logica dei colori derivati replica DBFB_Appearance (PHP).
+    // =========================================================
+    const DBFBAppearance = {
+        init: function() {
+            if (!$.fn.wpColorPicker) return;
+            $('.dbfb-appearance').each((i, el) => {
+                const $box = $(el);
+                const update = () => this.update($box);
+                $box.find('.dbfb-color-input').wpColorPicker({
+                    change: () => setTimeout(update, 0),
+                    clear: () => setTimeout(update, 0)
+                });
+                $box.on('input change', '.dbfb-color-input', update);
+                update();
+            });
+        },
+
+        normalize: function(c) {
+            c = String(c || '').trim().toLowerCase();
+            if (/^#[0-9a-f]{3}$/.test(c)) c = '#' + c[1] + c[1] + c[2] + c[2] + c[3] + c[3];
+            return /^#[0-9a-f]{6}$/.test(c) ? c : '';
+        },
+
+        value: function($box, key) {
+            return this.normalize($box.find('[data-color-key="' + key + '"]').val())
+                || this.normalize($box.attr('data-inherit-' + key));
+        },
+
+        luminance: function(hex) {
+            const rgb = [1, 3, 5].map(i => parseInt(hex.substr(i, 2), 16) / 255)
+                .map(c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+            return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+        },
+
+        contrast: function(a, b) {
+            const la = this.luminance(a), lb = this.luminance(b);
+            return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+        },
+
+        effective: function($box) {
+            const bg = this.value($box, 'bg');
+            const pageBg = bg || '#ffffff';
+            const primary = this.value($box, 'primary') || '#0056b3';
+            const text = this.value($box, 'text') || '#1a1a1a';
+            const buttonText = this.contrast(primary, '#ffffff') >= this.contrast(primary, '#000000') ? '#ffffff' : '#000000';
+            const link = this.contrast(primary, pageBg) >= 4.5 ? primary : text;
+            return { bg: bg, pageBg: pageBg, primary: primary, text: text, buttonText: buttonText, link: link };
+        },
+
+        update: function($box) {
+            const c = this.effective($box);
+            const $preview = $box.find('.dbfb-appearance-preview');
+            $preview.css({ background: c.pageBg, color: c.text });
+            $preview.find('.dbfb-appearance-preview-link').css('color', c.link);
+            $preview.find('.dbfb-appearance-preview-button').css({ background: c.primary, color: c.buttonText });
+
+            const ratio = this.contrast(c.text, c.pageBg);
+            let msg = '';
+            if (ratio < 4.5) {
+                const tpl = c.bg ? dbfb.strings.contrast_low : dbfb.strings.contrast_low_white;
+                msg = tpl.replace('%s', ratio.toFixed(1).replace('.', ','));
+            }
+            $box.find('.dbfb-appearance-warning').text(msg).toggle(msg !== '');
+        }
+    };
+
+    // =========================================================
+    // SEGNAPOSTO EMAIL (2.12.0): elenco cliccabile dei segnaposto
+    // reali del form, inseriti nel punto del cursore.
+    // =========================================================
+    const DBFBPlaceholders = {
+        signature: null,
+        layoutTypes: ['divider', 'html', 'image', 'pagebreak'],
+
+        render: function(force) {
+            const fields = (DBFB.fields || []).filter(f => !this.layoutTypes.includes(f.type));
+            const signature = JSON.stringify(fields.map(f => [f.id, f.label]));
+            // Ridisegna solo se i campi sono cambiati: ricreare i pulsanti
+            // durante un click farebbe perdere il click stesso.
+            if (!force && signature === this.signature) return;
+            this.signature = signature;
+
+            $('.dbfb-placeholder-list').each(function() {
+                const $list = $(this);
+                const fixed = [
+                    ['{riepilogo_dati}', dbfb.strings.ph_summary],
+                    ['{form_titolo}', dbfb.strings.ph_form_title],
+                    ['{sito}', dbfb.strings.ph_site],
+                    ['{data}', dbfb.strings.ph_date],
+                    ['{privacy_url}', dbfb.strings.ph_privacy_url]
+                ];
+                if ($list.data('context') === 'admin') fixed.push(['{ip}', dbfb.strings.ph_ip]);
+
+                const $fields = $('<div class="dbfb-placeholder-group"></div>');
+                if (fields.length) {
+                    $fields.append($('<span class="dbfb-placeholder-group-title"></span>').text(dbfb.strings.ph_fields));
+                    fields.forEach(f => $fields.append(DBFBPlaceholders.chip('{campo:' + f.id + '}', f.label || f.id)));
+                }
+                const $general = $('<div class="dbfb-placeholder-group"></div>')
+                    .append($('<span class="dbfb-placeholder-group-title"></span>').text(dbfb.strings.ph_general));
+                fixed.forEach(p => $general.append(DBFBPlaceholders.chip(p[0], p[1])));
+
+                $list.empty().append($fields, $general);
+            });
+        },
+
+        chip: function(token, label) {
+            return $('<button type="button" class="button button-small dbfb-placeholder-chip"></button>')
+                .attr('data-token', token)
+                .attr('title', token)
+                .text(label);
+        },
+
+        insert: function(el, token) {
+            const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+            const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : start;
+            el.value = el.value.slice(0, start) + token + el.value.slice(end);
+            el.focus();
+            el.setSelectionRange(start + token.length, start + token.length);
+            $(el).trigger('change');
+        },
+
+        init: function() {
+            if (!$('.dbfb-placeholder-list').length) return;
+            this.render(true);
+
+            $(document).on('mouseenter focusin', '.dbfb-placeholder-list', () => this.render(false));
+
+            // Ricorda se l'ultimo campo usato era l'oggetto o il messaggio.
+            $(document).on('focus', '.dbfb-settings-content input[type="text"], .dbfb-settings-content textarea', function() {
+                $(this).closest('.dbfb-settings-content').data('dbfbLastField', this);
+            });
+
+            $(document).on('click', '.dbfb-placeholder-chip', function(e) {
+                e.preventDefault();
+                const $list = $(this).closest('.dbfb-placeholder-list');
+                const last = $list.closest('.dbfb-settings-content').data('dbfbLastField');
+                const allowed = [$list.data('target'), $list.data('subject')];
+                const el = last && allowed.includes(last.id) ? last : document.getElementById($list.data('target'));
+                if (el) DBFBPlaceholders.insert(el, $(this).data('token'));
+            });
+        }
+    };
+
     $(document).ready(function() {
         if ($('#dbfb-form-builder').length) {
             DBFB.init();
         }
+        DBFBAppearance.init();
+        DBFBPlaceholders.init();
         
         // Gestione selezione template
         $(document).on('click', '.dbfb-use-template', function(e) {

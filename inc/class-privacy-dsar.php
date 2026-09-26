@@ -45,6 +45,9 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
          */
         const BATCH_SIZE = 100;
 
+        // Tetto di batch per singola chiamata dell'eraser (2.11.2): 50 x 100 = 5000 candidati.
+        const ERASER_MAX_BATCHES = 50;
+
         /**
          * Inizializzazione — chiamata da DB_Form_Builder->__construct().
          *
@@ -239,22 +242,35 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
             $email_address = strtolower(trim((string) $email_address));
             $page = max(1, (int) $page);
 
-            $matches = self::find_submissions_by_email($email_address, $page);
-
             global $wpdb;
             $table = $wpdb->prefix . 'dbfb_submissions';
             $items_removed = 0;
             $files_removed = 0;
             $messages = array();
 
-            foreach ($matches['rows'] as $row) {
-                // Cancella i file allegati prima del DELETE DB
-                // (riusa l'helper 2.4.0+ con validazione path-traversal).
-                $files_removed += DB_Form_Builder::delete_submission_files($row);
+            // 2.11.2: l'eraser non può paginare con OFFSET sulla stessa tabella
+            // da cui cancella (dopo il primo batch l'offset salterebbe righe
+            // ancora da cancellare). Scorriamo invece i candidati con un
+            // cursore sull'id all'interno della stessa chiamata. Il tetto di
+            // batch evita timeout: se viene raggiunto, WP richiama l'eraser
+            // e la scansione riparte dall'inizio (le righe già cancellate non
+            // ricompaiono, restano solo i falsi positivi del LIKE).
+            $after_id = 0;
+            $batches  = 0;
+            do {
+                $matches = self::find_submissions_by_email($email_address, 1, $after_id);
+                $after_id = $matches['last_id'];
 
-                $deleted = $wpdb->delete($table, array('id' => $row->id), array('%d'));
-                if ($deleted) $items_removed++;
-            }
+                foreach ($matches['rows'] as $row) {
+                    // Cancella i file allegati prima del DELETE DB
+                    // (riusa l'helper 2.4.0+ con validazione path-traversal).
+                    $files_removed += DB_Form_Builder::delete_submission_files($row);
+                    DB_Form_Builder::delete_submission_deliveries(array((int) $row->id));
+
+                    $deleted = $wpdb->delete($table, array('id' => $row->id), array('%d'));
+                    if ($deleted) $items_removed++;
+                }
+            } while (!$matches['done'] && ++$batches < self::ERASER_MAX_BATCHES);
 
             if ($items_removed > 0) {
                 $messages[] = sprintf(
@@ -297,20 +313,21 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
          *
          * @param string $email
          * @param int    $page
-         * @return array {rows: object[], done: bool}
+         * @param int|null $after_id Cursore sull'id (eraser); null = paginazione con OFFSET.
+         * @return array {rows: object[], done: bool, last_id: int}
          */
-        private static function find_submissions_by_email($email, $page) {
+        private static function find_submissions_by_email($email, $page, $after_id = null) {
             global $wpdb;
             $table = $wpdb->prefix . 'dbfb_submissions';
 
             // La tabella potrebbe non esistere in setup atipici.
             if ($wpdb->get_var("SHOW TABLES LIKE '$table'") !== $table) {
-                return array('rows' => array(), 'done' => true);
+                return array('rows' => array(), 'done' => true, 'last_id' => 0);
             }
 
             // Email vuota → no match (sanity check).
             if ($email === '' || strpos($email, '@') === false) {
-                return array('rows' => array(), 'done' => true);
+                return array('rows' => array(), 'done' => true, 'last_id' => 0);
             }
 
             $batch = self::BATCH_SIZE;
@@ -320,14 +337,26 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
             // e percenti nell'email che diventerebbero wildcard.
             $like = '%' . $wpdb->esc_like($email) . '%';
 
-            $candidates = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, form_id, data, ip_address, ip_hash, submitted_at
-                 FROM $table
-                 WHERE data LIKE %s
-                 ORDER BY id ASC
-                 LIMIT %d OFFSET %d",
-                $like, $batch, $offset
-            ));
+            if ($after_id !== null) {
+                // Paginazione a cursore (eraser): stabile anche mentre si cancella.
+                $candidates = $wpdb->get_results($wpdb->prepare(
+                    "SELECT id, form_id, data, ip_address, ip_hash, submitted_at
+                     FROM $table
+                     WHERE data LIKE %s AND id > %d
+                     ORDER BY id ASC
+                     LIMIT %d",
+                    $like, (int) $after_id, $batch
+                ));
+            } else {
+                $candidates = $wpdb->get_results($wpdb->prepare(
+                    "SELECT id, form_id, data, ip_address, ip_hash, submitted_at
+                     FROM $table
+                     WHERE data LIKE %s
+                     ORDER BY id ASC
+                     LIMIT %d OFFSET %d",
+                    $like, $batch, $offset
+                ));
+            }
 
             // Stato cache form_fields per evitare get_post_meta ripetuti
             // per submission dello stesso form.
@@ -349,7 +378,10 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
             // righe candidate (significa che siamo a fine tabella).
             $done = count($candidates) < $batch;
 
-            return array('rows' => $matched, 'done' => $done);
+            $last = end($candidates);
+            $last_id = $last ? (int) $last->id : (int) $after_id;
+
+            return array('rows' => $matched, 'done' => $done, 'last_id' => $last_id);
         }
 
         /**

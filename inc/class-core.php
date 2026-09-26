@@ -236,6 +236,7 @@ class DB_Form_Builder {
             ));
             foreach ($rows as $row) {
                 $files_deleted += self::delete_submission_files($row);
+                self::delete_submission_deliveries(array((int) $row->id));
                 ++$rows_processed;
                 // Cancella subito la riga DB così la query successiva non
                 // ripesca le stesse righe (la WHERE submitted_at non
@@ -583,9 +584,10 @@ class DB_Form_Builder {
         if (strpos($hook, 'dbfb') === false) return;
 
         wp_enqueue_media();
-        wp_enqueue_style('dbfb-admin', DBFB_PLUGIN_URL . 'assets/css/admin.css', [], DBFB_VERSION);
+        // 2.12.0: wp-color-picker per i colori del frontend (Aspetto).
+        wp_enqueue_style('dbfb-admin', DBFB_PLUGIN_URL . 'assets/css/admin.css', ['wp-color-picker'], DBFB_VERSION);
         wp_enqueue_script('sortablejs', 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js', [], '1.15.0', true);
-        wp_enqueue_script('dbfb-admin', DBFB_PLUGIN_URL . 'assets/js/admin.js', ['jquery', 'sortablejs'], DBFB_VERSION, true);
+        wp_enqueue_script('dbfb-admin', DBFB_PLUGIN_URL . 'assets/js/admin.js', ['jquery', 'sortablejs', 'wp-color-picker'], DBFB_VERSION, true);
 
         wp_localize_script('dbfb-admin', 'dbfb', [
             'ajax_url' => admin_url('admin-ajax.php'),
@@ -594,6 +596,20 @@ class DB_Form_Builder {
                 'confirm_delete' => __('Sei sicuro di voler eliminare questo campo?', 'db-form-builder'),
                 'saved' => __('Form salvato!', 'db-form-builder'),
                 'error' => __('Errore durante il salvataggio', 'db-form-builder'),
+                // 2.12.0: Aspetto
+                /* translators: %s: rapporto di contrasto, es. 3,2 */
+                'contrast_low' => __('Contrasto testo/sfondo %s:1, sotto il minimo WCAG AA (4,5:1): il testo del form potrebbe essere difficile da leggere.', 'db-form-builder'),
+                /* translators: %s: rapporto di contrasto, es. 3,2 */
+                'contrast_low_white' => __('Su sfondo bianco il contrasto del testo è %s:1 (minimo WCAG AA 4,5:1). Se il tema ha uno sfondo scuro può andare bene, ma conviene impostare anche il colore di sfondo.', 'db-form-builder'),
+                // 2.12.0: segnaposto email
+                'ph_fields' => __('Campi del form', 'db-form-builder'),
+                'ph_general' => __('Generali', 'db-form-builder'),
+                'ph_summary' => __('Riepilogo dati', 'db-form-builder'),
+                'ph_form_title' => __('Titolo del form', 'db-form-builder'),
+                'ph_site' => __('Nome del sito', 'db-form-builder'),
+                'ph_date' => __('Data invio', 'db-form-builder'),
+                'ph_privacy_url' => __('Link informativa privacy', 'db-form-builder'),
+                'ph_ip' => __('IP visitatore', 'db-form-builder'),
             ]
         ]);
     }
@@ -616,6 +632,21 @@ class DB_Form_Builder {
             'nonce' => wp_create_nonce('dbfb_submit_nonce'),
             'recaptcha_site_key' => $global_settings['recaptcha_site_key'],
             'recaptcha_version' => $global_settings['recaptcha_version'] ?? 'v2',
+            // 2.12.0: stringhe dell'interfaccia, traducibili.
+            'strings' => [
+                'file_type' => __('Formato non ammesso', 'db-form-builder'),
+                /* translators: %s: dimensione massima in MB */
+                'file_too_large' => __('File troppo grande (max %s MB)', 'db-form-builder'),
+                /* translators: %s: nome del file */
+                'remove_file' => __('Rimuovi %s', 'db-form-builder'),
+                'file_errors' => __('Correggi gli errori nei file allegati prima di inviare.', 'db-form-builder'),
+                'generic_error' => __('Si è verificato un errore. Riprova.', 'db-form-builder'),
+                'recaptcha_error' => __('Errore reCAPTCHA. Ricarica la pagina e riprova.', 'db-form-builder'),
+                'recaptcha_required' => __('Completa la verifica "Non sono un robot"', 'db-form-builder'),
+                'required' => __('Questo campo è obbligatorio', 'db-form-builder'),
+                /* translators: 1: passo corrente, 2: numero totale di passi */
+                'step_progress' => __('Passo %1$s di %2$s', 'db-form-builder'),
+            ],
         ]);
     }
 
@@ -695,14 +726,15 @@ class DB_Form_Builder {
         // Delete form
         if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['form_id'])) {
             $form_id = intval($_GET['form_id']);
-            if (isset($_GET['_wpnonce']) && !wp_verify_nonce($_GET['_wpnonce'], 'dbfb_delete_' . $form_id)) {
+            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'dbfb_delete_' . $form_id)) {
                 wp_die(__('Azione non autorizzata', 'db-form-builder'));
             }
             if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti', 'db-form-builder'));
 
             wp_delete_post($form_id, true);
-            global $wpdb;
-            $wpdb->delete($wpdb->prefix . 'dbfb_submissions', ['form_id' => $form_id], ['%d']);
+            // 2.11.2: cancella anche allegati su disco e webhook deliveries
+            // (contengono i dati personali delle submission).
+            self::delete_form_submissions($form_id);
             wp_redirect(admin_url('admin.php?page=dbfb-forms&deleted=1'));
             exit;
         }
@@ -755,6 +787,7 @@ class DB_Form_Builder {
             if ($submission) {
                 self::delete_submission_files($submission);
             }
+            self::delete_submission_deliveries([$submission_id]);
 
             $wpdb->delete($table, ['id' => $submission_id], ['%d']);
             $redirect_page = $form_id ? 'dbfb-forms&action=submissions&form_id=' . $form_id : 'dbfb-submissions';
@@ -782,6 +815,7 @@ class DB_Form_Builder {
             foreach ($rows as $row) {
                 self::delete_submission_files($row);
             }
+            self::delete_submission_deliveries($ids);
 
             $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE id IN ($placeholders)", $ids));
             $redirect_page = $form_id ? 'dbfb-forms&action=submissions&form_id=' . $form_id : 'dbfb-submissions';
@@ -810,24 +844,9 @@ class DB_Form_Builder {
             ));
 
             // 2.4.0: cancella i file allegati di TUTTE le submission del form.
-            // Streamiamo a batch da 100 per non saturare la memoria su form
-            // con migliaia di submission con allegati.
-            $offset = 0;
-            $batch  = 100;
-            do {
-                $rows = $wpdb->get_results($wpdb->prepare(
-                    "SELECT id, data FROM $table WHERE form_id = %d LIMIT %d OFFSET %d",
-                    $form_id, $batch, $offset
-                ));
-                foreach ($rows as $row) {
-                    self::delete_submission_files($row);
-                }
-                $offset += $batch;
-            } while (count($rows) === $batch);
-
-            $wpdb->query($wpdb->prepare(
-                "DELETE FROM $table WHERE form_id = %d", $form_id
-            ));
+            // 2.11.2: logica spostata in delete_form_submissions(), riusata
+            // anche dall'eliminazione del form; include le webhook deliveries.
+            self::delete_form_submissions($form_id);
 
             wp_redirect(admin_url('admin.php?page=dbfb-forms&action=submissions&form_id=' . $form_id . '&sub_deleted=' . $count));
             exit;
@@ -864,6 +883,11 @@ class DB_Form_Builder {
             // disinstallazione temporanea (debug, switch versione,
             // migrazione hosting).
             'delete_data_on_uninstall' => false,
+            // Aspetto (2.12.0): colori del frontend. Vuoto = colori predefiniti
+            // del plugin (frontend.css). Ogni form può sovrascriverli.
+            'color_bg' => '',
+            'color_primary' => '',
+            'color_text' => '',
         ];
         return wp_parse_args(get_option('dbfb_global_settings', []), $defaults);
     }
@@ -1157,10 +1181,25 @@ class DB_Form_Builder {
         $upload  = wp_upload_dir();
         $basedir = trailingslashit(realpath($upload['basedir']) ?: $upload['basedir']);
         $baseurl = trailingslashit($upload['baseurl']);
+        // Sicurezza (2.11.2): gli allegati stanno sempre in uploads/dbfb/{form_id}/.
+        // Qualunque path fuori da questa cartella (es. Media Library) viene ignorato.
+        $allowed_root = wp_normalize_path($basedir . 'dbfb/');
+
+        // Se è presente lo snapshot (2.6.0+) consideriamo solo i campi di tipo file.
+        $file_keys = null;
+        if (!empty($data['_fields_snapshot']) && is_array($data['_fields_snapshot'])) {
+            $file_keys = array();
+            foreach ($data['_fields_snapshot'] as $f) {
+                if (is_array($f) && ($f['type'] ?? '') === 'file' && !empty($f['id'])) {
+                    $file_keys[] = (string) $f['id'];
+                }
+            }
+        }
 
         foreach ($data as $key => $value) {
             // Skippa metadati interni del plugin (non sono campi file).
             if ($key === '_fields_snapshot') continue;
+            if ($file_keys !== null && !in_array((string) $key, $file_keys, true)) continue;
             // Un campo file può essere: array singolo {url, name, size, path}
             // oppure array di array (multiple). Normalizziamo.
             if (!is_array($value)) continue;
@@ -1171,6 +1210,9 @@ class DB_Form_Builder {
             foreach ($entries as $entry) {
                 if (!is_array($entry)) continue;
                 $abs_path = self::resolve_attachment_path($entry, $basedir, $baseurl);
+                if ($abs_path && strpos(wp_normalize_path($abs_path), $allowed_root) !== 0) {
+                    continue;
+                }
                 if ($abs_path && file_exists($abs_path) && is_file($abs_path)) {
                     if (@unlink($abs_path)) {
                         ++$deleted;
@@ -1181,6 +1223,75 @@ class DB_Form_Builder {
             }
         }
         return $deleted;
+    }
+
+    /**
+     * Cancella tutte le submission di un form, con allegati e webhook deliveries (2.11.2).
+     *
+     * Usato dall'eliminazione del form e da "Elimina tutte le risposte".
+     * Gli allegati vengono rimossi a batch da 100 per non saturare la
+     * memoria su form con migliaia di submission.
+     *
+     * @param int $form_id
+     * @return void
+     */
+    public static function delete_form_submissions($form_id) {
+        global $wpdb;
+        $form_id = (int) $form_id;
+        $table = $wpdb->prefix . 'dbfb_submissions';
+
+        $offset = 0;
+        $batch  = 100;
+        do {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, data FROM $table WHERE form_id = %d ORDER BY id ASC LIMIT %d OFFSET %d",
+                $form_id, $batch, $offset
+            ));
+            foreach ($rows as $row) {
+                self::delete_submission_files($row);
+            }
+            $offset += $batch;
+        } while (count($rows) === $batch);
+
+        $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE form_id = %d", $form_id));
+
+        if (self::deliveries_table_exists()) {
+            $deliveries = $wpdb->prefix . 'dbfb_webhook_deliveries';
+            $wpdb->query($wpdb->prepare("DELETE FROM $deliveries WHERE form_id = %d", $form_id));
+        }
+    }
+
+    /**
+     * Cancella le webhook deliveries collegate a una o più submission (2.11.2).
+     *
+     * Il payload delle deliveries contiene l'intera submission: va rimosso
+     * insieme a essa (GDPR art. 17), non lasciato scadere col cron dei 30/90 giorni.
+     *
+     * @param int[] $submission_ids
+     * @return void
+     */
+    public static function delete_submission_deliveries($submission_ids) {
+        $ids = array_values(array_filter(array_map('intval', (array) $submission_ids)));
+        if (empty($ids) || !self::deliveries_table_exists()) return;
+
+        global $wpdb;
+        $deliveries   = $wpdb->prefix . 'dbfb_webhook_deliveries';
+        $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        $wpdb->query($wpdb->prepare("DELETE FROM $deliveries WHERE submission_id IN ($placeholders)", $ids));
+    }
+
+    /**
+     * La tabella deliveries esiste solo dalla 2.7.0: su installazioni non
+     * ancora migrate evitiamo query che fallirebbero.
+     */
+    private static function deliveries_table_exists() {
+        static $exists = null;
+        if ($exists === null) {
+            global $wpdb;
+            $table  = $wpdb->prefix . 'dbfb_webhook_deliveries';
+            $exists = ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table);
+        }
+        return $exists;
     }
 
     /**
