@@ -88,6 +88,15 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 'query'  => array(__CLASS__, 'hub_query_consents'),
                 'export' => array(__CLASS__, 'hub_query_consents'),
             );
+            // 2.16.0: consensi facoltativi per voce (marketing, newsletter, ...).
+            // Solo consensi dati; stato attivo/revocato in 'extra'.
+            $sources['dbfb_marketing_consents'] = array(
+                'label'  => __('Form Builder — Consensi facoltativi', 'db-form-builder'),
+                'icon'   => 'megaphone',
+                'count'  => array('DBFB_Consents', 'hub_count'),
+                'query'  => array('DBFB_Consents', 'hub_query'),
+                'export' => array('DBFB_Consents', 'hub_query'),
+            );
             return $sources;
         }
 
@@ -253,6 +262,11 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 $register[] = self::build_webhook_entry($features['webhook_hosts']);
             }
 
+            /* ---- 5. Consensi facoltativi (2.16.0) ------------------------- */
+            if ($features['has_marketing_consents']) {
+                $register[] = self::build_marketing_entry($features);
+            }
+
             return $register;
         }
 
@@ -291,6 +305,10 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 'forms_total'                 => 0,
                 'forms_without_gdpr'          => 0,
                 'forms_gdpr_intentional_off'  => 0,
+                // 2.16.0: consensi facoltativi configurati nei form pubblicati.
+                'has_marketing_consents'      => false,
+                'marketing_purposes'          => array(),
+                'marketing_webhook_hosts'     => array(),
             );
 
             $forms = get_posts(array(
@@ -334,6 +352,23 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 if (!empty($settings['enable_gdpr']) && !empty($settings['gdpr_link'])) {
                     $features['has_specific_privacy_notice'] = true;
                     ++$features['forms_with_specific_notice'];
+                }
+                // 2.16.0: consensi facoltativi.
+                $optional = class_exists('DBFB_Consents') ? DBFB_Consents::definitions($settings) : array();
+                if ($optional) {
+                    $features['has_marketing_consents'] = true;
+                    foreach ($optional as $def) {
+                        $label = $def['purpose'] !== '' ? $def['purpose'] : $def['key'];
+                        if (!in_array($label, $features['marketing_purposes'], true)) {
+                            $features['marketing_purposes'][] = $label;
+                        }
+                    }
+                    if (!empty($settings['enable_webhook']) && !empty($settings['webhook_url'])) {
+                        $host = wp_parse_url($settings['webhook_url'], PHP_URL_HOST);
+                        if ($host && !in_array($host, $features['marketing_webhook_hosts'], true)) {
+                            $features['marketing_webhook_hosts'][] = $host;
+                        }
+                    }
                 }
                 // 2.10.0: conteggio form senza checkbox GDPR.
                 ++$features['forms_total'];
@@ -531,6 +566,34 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                     __('Trasferimento ai seguenti host esterni: %s. Verificare se ognuno è UE o extra-UE e in quest\'ultimo caso assicurarsi che esista una base giuridica adeguata (SCC, decisione di adeguatezza, ecc.).', 'db-form-builder'),
                     $hosts_text
                 ),
+            );
+        }
+
+        /**
+         * Voce "Consensi facoltativi" (2.16.0): finalità basate sul consenso
+         * dato con le caselle aggiuntive dei form (marketing, newsletter, ...).
+         */
+        private static function build_marketing_entry($features) {
+            $hosts = $features['marketing_webhook_hosts'];
+            return array(
+                'id'             => 'dbfb_marketing',
+                'label'          => __('Consensi facoltativi dei moduli (DB Form Builder)', 'db-form-builder'),
+                'status'         => 'active',
+                'purpose'        => sprintf(
+                    /* translators: %s: elenco delle finalità configurate */
+                    __('Finalità per cui l\'interessato ha dato un consenso facoltativo e separato nel modulo: %s.', 'db-form-builder'),
+                    implode('; ', $features['marketing_purposes'])
+                ),
+                'legal_basis'    => __('Consenso dell\'interessato (art. 6.1.a GDPR), libero e separato dal consenso principale: le caselle non sono pre-spuntate e l\'invio del modulo non dipende da esse (art. 7.4). Revocabile in ogni momento dal link nell\'email di conferma (art. 7.3).', 'db-form-builder'),
+                'data_collected' => __('Email ed eventuali altri campi compilati nel modulo. Per ogni consenso: testo mostrato, scelta (anche negativa), data, informativa e versione della Privacy Policy in vigore, data e origine dell\'eventuale revoca. L\'interessato è collegato al consenso con un hash (HMAC) dell\'email e una forma mascherata, mai con l\'email in chiaro.', 'db-form-builder'),
+                'retention'      => __('Fino alla revoca, anche oltre la conservazione delle risposte del modulo. Dopo la revoca la prova della revoca resta per la stessa durata della retention delle risposte, poi viene cancellata. I consensi non dati seguono la risposta.', 'db-form-builder'),
+                'transfers'      => empty($hosts)
+                    ? __('Nessuno dal plugin. Database WordPress locale.', 'db-form-builder')
+                    : sprintf(
+                        /* translators: %s: host dei webhook */
+                        __('Esito dei consensi ed eventuali revoche inviati via webhook a: %s.', 'db-form-builder'),
+                        implode(', ', $hosts)
+                    ),
             );
         }
 

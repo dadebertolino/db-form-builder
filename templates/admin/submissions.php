@@ -165,7 +165,22 @@
                                    data-gdpr-text="<?php echo esc_attr( (string) ($submission->gdpr_consent_text ?? '') ); ?>"
                                    data-gdpr-timestamp="<?php echo esc_attr( (string) ($submission->gdpr_consent_timestamp ?? '') ); ?>"
                                    data-gdpr-url="<?php echo esc_attr( (string) ($submission->gdpr_consent_privacy_url ?? '') ); ?>"
-                                   data-gdpr-version="<?php echo esc_attr( (string) (int) ($submission->gdpr_consent_policy_version ?? 0) ); ?>">
+                                   data-gdpr-version="<?php echo esc_attr( (string) (int) ($submission->gdpr_consent_policy_version ?? 0) ); ?>"
+                                   data-consents="<?php
+                                   // 2.16.0: consensi facoltativi della risposta.
+                                   echo esc_attr(wp_json_encode(array_map(function ($c) {
+                                       return array(
+                                           'id'         => (int) $c->id,
+                                           'key'        => (string) $c->consent_key,
+                                           'text'       => (string) $c->consent_text,
+                                           'given'      => (int) $c->given,
+                                           'given_at'   => (string) $c->given_at,
+                                           'revoked_at' => (string) $c->revoked_at,
+                                           'source'     => (string) $c->revoke_source,
+                                           'version'    => (int) $c->policy_version,
+                                       );
+                                   }, $consents_by_submission[(int) $submission->id] ?? array())));
+                                   ?>">
                                     <?php _e('Dettaglio', 'db-form-builder'); ?>
                                 </a>
                                 <a href="<?php echo wp_nonce_url(
@@ -259,6 +274,26 @@ jQuery(document).ready(function($) {
             consentBlock += '<tr><td colspan="2" style="font-size:13px;color:#666"><?php echo esc_js(__('Submission inserita prima dell\'aggiornamento alla 2.11.0 oppure form privo di checkbox di consenso senza dichiarazione consapevole. La conformità GDPR per questa specifica submission non è documentabile.', 'db-form-builder')); ?></td></tr>';
         }
         html += consentBlock;
+
+        // 2.16.0: consensi facoltativi, con revoca manuale.
+        var optional = [];
+        try { optional = JSON.parse($link.attr('data-consents') || '[]'); } catch (err) { optional = []; }
+        if (optional.length) {
+            html += '<tr style="background:#f0f6fc"><th colspan="2" style="padding-top:14px;border-top:2px solid #2271b1;color:#1d4f80"><?php echo esc_js(__('Consensi facoltativi', 'db-form-builder')); ?></th></tr>';
+            optional.forEach(function(c) {
+                var esc = function(v) { return $('<div>').text(v == null ? '' : String(v)).html(); };
+                var status;
+                if (!c.given) {
+                    status = '<?php echo esc_js(__('No', 'db-form-builder')); ?> <span style="color:#666;font-size:12px">(' + esc(c.given_at) + ')</span>';
+                } else if (c.revoked_at) {
+                    status = '<strong style="color:#b32d2e"><?php echo esc_js(__('Revocato', 'db-form-builder')); ?></strong> <span style="color:#666;font-size:12px">(' + esc(c.revoked_at) + ', ' + esc(c.source === 'link' ? '<?php echo esc_js(__('dal link email', 'db-form-builder')); ?>' : '<?php echo esc_js(__('da admin', 'db-form-builder')); ?>') + ')</span>';
+                } else {
+                    status = '<strong style="color:#166534"><?php echo esc_js(__('Sì', 'db-form-builder')); ?></strong> <span style="color:#666;font-size:12px">(' + esc(c.given_at) + (c.version > 0 ? ', policy v#' + esc(c.version) : '') + ')</span>'
+                        + ' <button type="button" class="button button-small dbfb-admin-revoke" data-consent-id="' + esc(c.id) + '" style="margin-left:8px"><?php echo esc_js(__('Revoca', 'db-form-builder')); ?></button>';
+                }
+                html += '<tr><th title="' + esc(c.text) + '">' + esc(c.key) + '</th><td>' + esc(c.text) + '<br>' + status + '</td></tr>';
+            });
+        }
         
         for (var key in labels) {
             var value = fields[key] || '';
@@ -320,6 +355,40 @@ jQuery(document).ready(function($) {
         if (e.target === this) closeModal();
     });
     
+    // 2.16.0: revoca manuale di un consenso facoltativo (revoke_source = admin).
+    $(document).on('click', '.dbfb-admin-revoke', function() {
+        var $btn = $(this);
+        if (!window.confirm(dbfb.strings.revoke_confirm)) return;
+        $btn.prop('disabled', true);
+        $.post(dbfb.ajax_url, {
+            action: 'dbfb_admin_revoke_consent',
+            nonce: dbfb.nonce,
+            consent_id: $btn.data('consent-id')
+        }).done(function(res) {
+            if (!res || !res.success) {
+                window.alert((res && res.data && res.data.message) || dbfb.strings.error);
+                $btn.prop('disabled', false);
+                return;
+            }
+            // Aggiorna i dati del link, così riaprendo il dettaglio lo stato è corretto.
+            if ($lastFocused) {
+                var list = [];
+                try { list = JSON.parse($lastFocused.attr('data-consents') || '[]'); } catch (err) { list = []; }
+                list.forEach(function(c) {
+                    if (String(c.id) === String($btn.data('consent-id'))) { c.revoked_at = res.data.revoked_at; c.source = 'admin'; }
+                });
+                $lastFocused.attr('data-consents', JSON.stringify(list));
+            }
+            // Il pulsante sparisce: il focus passa al messaggio (WCAG 2.4.3).
+            var $done = $('<strong style="color:#b32d2e" tabindex="-1" role="status"></strong>').text(res.data.message);
+            $btn.replaceWith($done);
+            $done.trigger('focus');
+        }).fail(function() {
+            window.alert(dbfb.strings.error);
+            $btn.prop('disabled', false);
+        });
+    });
+
     // Escape key closes modal (WCAG 2.1.1)
     $(document).on('keydown', function(e) {
         if (e.key === 'Escape' && $('#dbfb-submission-modal').is(':visible')) {

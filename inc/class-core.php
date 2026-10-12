@@ -101,6 +101,10 @@ class DB_Form_Builder {
         // retry/backoff esponenziale, HMAC signing opt-in, dead-letter
         // queue dopo 5 tentativi.
         DBFB_Webhook::init();
+
+        // Consensi facoltativi (2.16.0): pagina pubblica di revoca e revoca
+        // manuale dalla vista Risposte.
+        DBFB_Consents::init();
     }
 
     // =========================================================
@@ -275,6 +279,9 @@ class DB_Form_Builder {
             foreach ($rows as $row) {
                 $files_deleted += self::delete_submission_files($row);
                 self::delete_submission_deliveries(array((int) $row->id));
+                // 2.16.0: i consensi facoltativi dati e non revocati restano
+                // fino alla revoca, il resto segue la risposta.
+                DBFB_Consents::on_submissions_expired(array((int) $row->id));
                 ++$rows_processed;
                 // Cancella subito la riga DB così la query successiva non
                 // ripesca le stesse righe (la WHERE submitted_at non
@@ -284,6 +291,9 @@ class DB_Form_Builder {
         } while (count($rows) === $batch && $rows_processed < $cap);
 
         $deleted = $rows_processed;
+
+        // 2.16.0: consensi rimasti senza risposta e poi revocati.
+        DBFB_Consents::cleanup_revoked_orphans($days);
 
         if ($deleted > 0 && defined('WP_DEBUG') && WP_DEBUG) {
             error_log(sprintf('DB Form Builder: cleanup_expired_submissions cancellate %d righe (retention %d giorni), %d file allegati rimossi', (int) $deleted, $days, (int) $files_deleted));
@@ -371,6 +381,9 @@ class DB_Form_Builder {
             dbDelta($sql_dlv);
         }
 
+        // Tabella consensi facoltativi (2.16.0+).
+        DBFB_Consents::create_table();
+
         // Marca lo schema come aggiornato all'ultima versione solo per una
         // tabella appena creata (vedi nota sopra).
         if ($created_fresh) {
@@ -386,7 +399,7 @@ class DB_Form_Builder {
      * admin_init e in attivazione, quindi anche installazioni in
      * mu-plugins o WP-CLI bulk hanno lo schema corretto.
      */
-    const SCHEMA_VERSION = 5;
+    const SCHEMA_VERSION = 6;
 
     /**
      * Aggiorna lo schema esistente da versioni precedenti.
@@ -396,6 +409,7 @@ class DB_Form_Builder {
      *  - v2 → v3 (2.7.0): tabella webhook deliveries
      *  - v3 → v4 (2.11.0): colonne prova del consenso gdpr_consent_*
      *  - v4 → v5 (2.13.0): riesecuzione idempotente di tutti i passi (riparazione)
+     *  - v5 → v6 (2.16.0): tabella wp_dbfb_consents (consensi facoltativi)
      *
      * Le submission esistenti mantengono il loro ip_address in chiaro
      * (backward compat). Per le nuove submission, il salvataggio popolerà
@@ -471,6 +485,12 @@ class DB_Form_Builder {
             if (!$idx) {
                 $wpdb->query("ALTER TABLE $table ADD INDEX gdpr_consent_policy_version (gdpr_consent_policy_version)");
             }
+        }
+
+        // v5 → v6 (Form Builder 2.16.0): tabella dei consensi facoltativi.
+        // create_table() controlla l'esistenza (SHOW TABLES) prima di creare.
+        if ($current < 6) {
+            DBFB_Consents::create_table();
         }
 
         update_option('dbfb_schema_version', self::SCHEMA_VERSION);
@@ -681,6 +701,10 @@ class DB_Form_Builder {
                 'ph_ip' => __('IP visitatore', 'db-form-builder'),
                 // 2.14.0: documenti nella conferma
                 'ph_documents' => __('Documenti', 'db-form-builder'),
+                // 2.16.0: consensi facoltativi
+                'ph_revoke' => __('Link revoca consensi', 'db-form-builder'),
+                'ph_consents' => __('Consensi facoltativi', 'db-form-builder'),
+                'revoke_confirm' => __('Revocare questo consenso? L\'operazione non si può annullare.', 'db-form-builder'),
                 'docs_title' => __('Seleziona i documenti da inviare', 'db-form-builder'),
                 'docs_button' => __('Aggiungi alla conferma', 'db-form-builder'),
                 /* translators: %s: titolo del documento */
@@ -960,6 +984,7 @@ class DB_Form_Builder {
                 self::delete_submission_files($submission);
             }
             self::delete_submission_deliveries([$submission_id]);
+            DBFB_Consents::delete_for_submissions([$submission_id]);
 
             $wpdb->delete($table, ['id' => $submission_id], ['%d']);
             $redirect_page = $form_id ? 'dbfb-forms&action=submissions&form_id=' . $form_id : 'dbfb-submissions';
@@ -988,6 +1013,7 @@ class DB_Form_Builder {
                 self::delete_submission_files($row);
             }
             self::delete_submission_deliveries($ids);
+            DBFB_Consents::delete_for_submissions($ids);
 
             $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE id IN ($placeholders)", $ids));
             $redirect_page = $form_id ? 'dbfb-forms&action=submissions&form_id=' . $form_id : 'dbfb-submissions';
@@ -1426,6 +1452,10 @@ class DB_Form_Builder {
         } while (count($rows) === $batch);
 
         $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE form_id = %d", $form_id));
+
+        // 2.16.0: anche i consensi facoltativi del form, compresi quelli
+        // sopravvissuti alla retention (cancellazione esplicita dell'admin).
+        DBFB_Consents::delete_for_form($form_id);
 
         if (self::deliveries_table_exists()) {
             $deliveries = $wpdb->prefix . 'dbfb_webhook_deliveries';

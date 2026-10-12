@@ -621,6 +621,7 @@
             var type = $field.attr('type');
             
             if (name === 'dbfb_website_url' || name === 'dbfb_timestamp' || name === 'dbfb_hidden_fields') return;
+            if (name === 'dbfb_optional_consent[]') return; // 2.16.0: inviati a parte
             if ($field.prop('disabled')) return;
             if (type === 'file') return; // Files handled via FormData
             
@@ -658,6 +659,10 @@
         var honeypotValue = $form.find('[name="dbfb_website_url"]').val() || '';
         var timestamp = $form.find('[name="dbfb_timestamp"]').val() || '';
         var hiddenFields = $form.find('[name="dbfb_hidden_fields"]').val() || '[]';
+        // 2.16.0: chiavi dei consensi facoltativi spuntati.
+        var optionalConsents = $form.find('[name="dbfb_optional_consent[]"]:checked').map(function() {
+            return this.value;
+        }).get();
         
         var submitForm = function(recaptchaToken) {
             setLoadingState($form, true);
@@ -672,6 +677,7 @@
             fd.append('dbfb_website_url', honeypotValue);
             fd.append('dbfb_timestamp', timestamp);
             fd.append('hidden_fields', hiddenFields);
+            fd.append('consents', JSON.stringify(optionalConsents));
             
             // Append files
             $form.find('.dbfb-file-input').each(function() {
@@ -723,7 +729,7 @@
                         var $stepNav = $form.find('.dbfb-step-nav');
                         var $submitWrap = $form.find('.dbfb-submit').closest('.dbfb-form-group');
                         var $captcha = $form.find('.dbfb-recaptcha-container');
-                        var $gdpr = $form.find('.dbfb-gdpr-group');
+                        var $gdpr = $form.find('.dbfb-gdpr-group, .dbfb-consents-group');
                         
                         if ($multistep.length) {
                             $multistep.hide();

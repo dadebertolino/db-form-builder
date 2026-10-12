@@ -294,10 +294,29 @@ class DBFB_Submit {
             }
         }
 
+        // 2.16.0: consensi facoltativi. Si registra una riga per voce, anche
+        // per quelli non dati. Solo chiavi configurate nel form: il resto del
+        // payload del client viene ignorato.
+        $consent_rows = [];
+        if ($submission_id && DBFB_Consents::definitions($form_settings)) {
+            $given_keys = json_decode(stripslashes((string) ($_POST['consents'] ?? '[]')), true);
+            $given_keys = is_array($given_keys)
+                ? array_map('sanitize_key', array_filter($given_keys, 'is_scalar'))
+                : [];
+            $consent_rows = DBFB_Consents::record($submission_id, $form_id, $form_settings, $given_keys, $user_email);
+        }
+        $consent_placeholders = [
+            '{consensi}'        => DBFB_Consents::summary_text($consent_rows),
+            // Link di revoca solo se almeno un consenso è stato dato.
+            '{revoca_consenso}' => DBFB_Consents::active_for_submission($submission_id) ? DBFB_Consents::revoke_url($submission_id) : '',
+        ];
+        $placeholders = array_merge($placeholders, $consent_placeholders);
+
         if (!empty($form_settings['send_confirmation']) && $user_email) {
             // 2.13.0: nella conferma all'utente gli allegati compaiono solo
             // per nome (il link di download è riservato all'admin).
             $user_placeholders = DBFB_Email::prepare_placeholders($form, $form_fields, $form_data, $form_settings, 'user');
+            $user_placeholders = array_merge($user_placeholders, $consent_placeholders);
             DBFB_Email::send_confirmation($user_email, $form_settings, $user_placeholders);
         }
 
@@ -313,6 +332,10 @@ class DBFB_Submit {
         // visibile in admin.
         if (!empty($form_settings['enable_webhook']) && !empty($form_settings['webhook_url'])) {
             $payload = DBFB_Webhook::build_payload($form, $form_fields, $form_data, $client_ip);
+            // 2.16.0: chiave aggiuntiva, le altre del payload non cambiano.
+            if ($consent_rows) {
+                $payload['consents'] = DBFB_Consents::webhook_items($consent_rows);
+            }
             DBFB_Webhook::enqueue(
                 $form_id,
                 $submission_id,

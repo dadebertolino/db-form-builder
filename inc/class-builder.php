@@ -37,6 +37,8 @@ class DBFB_Builder {
             // monitora la conformità di default. Casi legittimi: form interno autenticato, form
             // con base giuridica diversa dal consenso (contratto, legittimo interesse).
             'gdpr_intentionally_disabled' => false,
+            // 2.16.0: consensi facoltativi (marketing, newsletter, ...).
+            'optional_consents' => [],
             'rate_limit_enabled' => false,
             'rate_limit_max' => 5,
             'rate_limit_window' => 60,
@@ -55,6 +57,8 @@ class DBFB_Builder {
             // 2.7.0: secret HMAC opzionale. Se valorizzato, ogni delivery
             // viene firmata con HMAC-SHA256(secret, "{timestamp}.{body}").
             'webhook_secret' => '',
+            // 2.16.0: invia al webhook anche le revoche dei consensi.
+            'webhook_on_revoke' => false,
             // 2.12.0: colori del form, '' = usa le impostazioni globali.
             'color_bg' => '',
             'color_primary' => '',
@@ -189,6 +193,7 @@ class DBFB_Builder {
             'gdpr_text' => wp_kses_post($settings['gdpr_text'] ?? ''),
             'gdpr_link' => esc_url_raw($settings['gdpr_link'] ?? ''),
             'gdpr_intentionally_disabled' => !empty($settings['gdpr_intentionally_disabled']),
+            'optional_consents' => DBFB_Consents::sanitize_definitions($settings['optional_consents'] ?? []),
             'rate_limit_enabled' => !empty($settings['rate_limit_enabled']),
             'rate_limit_max' => intval($settings['rate_limit_max'] ?? 5),
             'rate_limit_window' => intval($settings['rate_limit_window'] ?? 60),
@@ -207,6 +212,7 @@ class DBFB_Builder {
             // 2.7.0: secret HMAC. Sanitize: solo caratteri sicuri, max 128 char.
             // Non escape_html: deve restare letterale per il calcolo HMAC.
             'webhook_secret' => self::sanitize_webhook_secret($settings['webhook_secret'] ?? ''),
+            'webhook_on_revoke' => !empty($settings['webhook_on_revoke']),
             // 2.12.0: colori del form, '' = usa le impostazioni globali.
             'color_bg' => DBFB_Appearance::sanitize_color($settings['color_bg'] ?? ''),
             'color_primary' => DBFB_Appearance::sanitize_color($settings['color_primary'] ?? ''),

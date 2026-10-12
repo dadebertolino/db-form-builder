@@ -243,6 +243,13 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                 );
             }
 
+            // 2.16.0: consensi facoltativi dell'interessato, cercati per hash
+            // dell'email (anche quelli rimasti dopo la retention della
+            // risposta). Gruppo separato, solo alla prima pagina.
+            if ($page === 1 && class_exists('DBFB_Consents')) {
+                $data = array_merge($data, DBFB_Consents::dsar_export_items($email_address));
+            }
+
             return array(
                 'data' => $data,
                 'done' => $matches['done'],
@@ -321,11 +328,24 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                     // (riusa l'helper 2.4.0+ con validazione path-traversal).
                     $files_removed += DB_Form_Builder::delete_submission_files($row);
                     DB_Form_Builder::delete_submission_deliveries(array((int) $row->id));
+                    // 2.16.0: consensi facoltativi della submission.
+                    DBFB_Consents::delete_for_submissions(array((int) $row->id));
 
                     $deleted = $wpdb->delete($table, array('id' => $row->id), array('%d'));
                     if ($deleted) $items_removed++;
                 }
             } while (!$matches['done'] && ++$batches < self::ERASER_MAX_BATCHES);
+
+            // 2.16.0: consensi rimasti senza risposta (dopo la retention),
+            // collegati all'interessato tramite l'hash dell'email.
+            $consents_removed = DBFB_Consents::dsar_erase($email_address);
+            if ($consents_removed > 0) {
+                $messages[] = sprintf(
+                    /* translators: %d: consensi facoltativi cancellati */
+                    _n('Cancellato %d consenso facoltativo del Form Builder.', 'Cancellati %d consensi facoltativi del Form Builder.', $consents_removed, 'db-form-builder'),
+                    $consents_removed
+                );
+            }
 
             $done = (bool) $matches['done'];
             // Rete di sicurezza: se il transient del cursore venisse perso
@@ -356,7 +376,7 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
             }
 
             return array(
-                'items_removed'  => $items_removed,
+                'items_removed'  => $items_removed + $consents_removed,
                 'items_retained' => 0, // Cancelliamo tutto quello che troviamo: niente retention selettiva.
                 'messages'       => $messages,
                 'done'           => $done,
