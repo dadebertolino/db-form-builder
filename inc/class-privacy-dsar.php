@@ -185,6 +185,14 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                     );
                 }
 
+                // 2.17.0: provenienza della campagna, se registrata.
+                foreach ($info['attribution'] as $attr_key => $attr_value) {
+                    $items[] = array(
+                        'name'  => DBFB_Attribution::label($attr_key),
+                        'value' => (string) $attr_value,
+                    );
+                }
+
                 // L'IP viene incluso solo se è disponibile (rispetta storage mode).
                 // 2.13.0: etichetta coerente con format_submission_ip(): "hash"
                 // solo se il valore è davvero l'hash, altrimenti IP in chiaro

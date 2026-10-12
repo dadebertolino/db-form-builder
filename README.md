@@ -15,6 +15,7 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
   - Struttura: Cambio pagina (multi-step)
 - **Logica condizionale** — Mostra/nascondi campi in base alle risposte (8 operatori, AND/OR)
 - **Precompilazione da URL (2.15.0+)** — I campi si compilano da un link (`?arrivo=2026-11-01`), compatibile con la cache di pagina
+- **Provenienza delle campagne (2.17.0+)** — UTM letti dall'URL della pagina del form e salvati con la risposta, senza cookie né storage nel browser
 - **Redirect ed eventi JS (2.15.0+)** — Dopo l'invio messaggio o redirect a una pagina del sito; eventi `dbfb:submitted` e `dbfb:prefilled` per il tracciamento delle conversioni
 - **Upload file** — Drag & drop o click, estensioni configurabili, dimensione max per campo, file multipli, validazione client + server
 - **Form multi-step** — Barra di progresso, navigazione avanti/indietro, validazione per step
@@ -198,6 +199,8 @@ Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)
 | `dbfb_webhook_file_link_ttl` | `604800` | Validità in secondi dei link firmati nei webhook (2.13.0+, default 7 giorni) |
 | `dbfb_prefill_allowed_types` | testo, area testo, numero, data, URL, menu, scelta singola, checkbox | Tipi di campo precompilabili da URL (2.15.0+; file e layout mai, il campo nascosto sempre) |
 | `dbfb_redirect_allow_external` | `false` | Consente il redirect dopo l'invio verso domini esterni; riceve `$url` e `$form_id` (2.15.0+) |
+| `dbfb_attribution_keys` | `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content` | Parametri URL registrati come provenienza (2.17.0+). Le chiavi non `utm_*` partono dal browser solo con il consenso |
+| `dbfb_attribution_consent_category` | `'marketing'` | Categoria di consenso richiesta per le chiavi non `utm_*` (2.17.0+) |
 | `dbfb_revoke_rate_limit` | `20` | Richieste massime per IP alla pagina di revoca dei consensi nella finestra (2.16.0+, `0` = disattivato) |
 | `dbfb_revoke_rate_window` | `600` | Durata in secondi della finestra del limite precedente (2.16.0+) |
 
@@ -298,6 +301,18 @@ Il valore arriva dalla pagina o dall'URL, quindi chiunque può modificarlo: va b
 
 ### Dopo l'invio: messaggio o redirect (2.15.0+)
 In Impostazioni del form, "Dopo l'invio": mostra il messaggio di successo oppure reindirizza a una pagina. L'URL deve essere di questo sito (path come `/grazie/`, relativo alla radice del dominio, o URL completo): viene verificato al salvataggio e di nuovo a ogni invio. Domini esterni solo con il filter `dbfb_redirect_allow_external` (protezione da open redirect). Il redirect avviene nel browser, dopo l'evento `dbfb:submitted`.
+
+### Provenienza della campagna (2.17.0+)
+In Impostazioni del form, "Registra la provenienza della campagna (UTM)" (disattivata di default). All'invio vengono salvati con la risposta `utm_source`, `utm_medium`, `utm_campaign`, `utm_term` e `utm_content` presenti nell'URL della pagina del form, più il percorso della pagina (senza query string).
+
+- **Solo dall'URL, niente storage:** i parametri si leggono dall'URL corrente al momento dell'invio. Nulla viene scritto sul dispositivo del visitatore (né cookie, né sessionStorage, né localStorage), quindi non serve il consenso cookie (art. 5.3 ePrivacy). Limite voluto: se il visitatore arriva su un'altra pagina e raggiunge il form navigando, gli UTM non vengono registrati. Per le campagne conviene quindi linkare direttamente la pagina con il form.
+- **Identificativi di click** (`gclid`, `fbclid`, `msclkid`, ...) esclusi per default: sono identificativi di tracciamento. Si aggiungono con il filter `dbfb_attribution_keys` e il browser li invia solo con il consenso della categoria `marketing` (DB Cookie Manager o WP Consent API; filter `dbfb_attribution_consent_category`). Senza consent manager non vengono mai inviati.
+  ```php
+  add_filter('dbfb_attribution_keys', function ($keys) { $keys[] = 'gclid'; return $keys; });
+  ```
+- **Lato server:** solo chiavi ammesse, `sanitize_text_field`, massimo 150 caratteri per valore; ignorati se l'opzione non è attiva sul form. Salvati nella chiave riservata `_attribution` del JSON della risposta (come `_fields_snapshot`): nessuna migrazione.
+- **Dove compaiono:** dettaglio della risposta (blocco "Provenienza della campagna"), CSV (una colonna per chiave presente, nessuna colonna se l'opzione non è mai stata usata), webhook (chiave `attribution` separata da `fields`, esclusa da `raw_data`; assente se non c'è provenienza), segnaposto email `{utm_source}`, `{utm_medium}`, `{utm_campaign}`, `{utm_term}`, `{utm_content}`, `{pagina_form}` (vuoti se assenti), export DSAR, registro trattamenti (`dbfb_submissions` cita i dati di provenienza quando almeno un form ha l'opzione attiva).
+- **Cache di pagina:** il server stampa sul `<form>` solo l'elenco delle chiavi (`data-dbfb-attribution`), uguale per tutti.
 
 ### Eventi JavaScript (2.15.0+)
 Eventi DOM nativi sul `<form>`, che risalgono fino a `document` (non serve jQuery). Non contengono mai dati personali.
@@ -406,6 +421,16 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.17.0 — Provenienza delle campagne (UTM)
+
+Nessuna migrazione dello schema. I form esistenti non cambiano finché l'opzione resta spenta (default): nessuna colonna nuova nel CSV, nessuna chiave nuova nel webhook.
+
+- **Nuova opzione per form** "Registra la provenienza della campagna (UTM)" (`track_attribution`), nuova classe `DBFB_Attribution`.
+- **Solo dall'URL:** `frontend.js` legge `utm_*` e il percorso della pagina dall'URL corrente all'invio e li invia come campo riservato `attribution`. Nessun cookie, sessionStorage o localStorage: non serve consenso (scelta privacy by design rispetto alla conservazione per tutta la visita prevista in roadmap).
+- **Identificativi di click** esclusi per default; abilitabili con il filter `dbfb_attribution_keys`, inviati dal browser solo con consenso `marketing` (filter `dbfb_attribution_consent_category`).
+- **Server:** whitelist delle chiavi, `sanitize_text_field`, max 150 caratteri, percorso senza query; salvataggio in `_attribution` nel JSON, esclusa dai campi come `_fields_snapshot` (`get_submission_fields()` la restituisce a parte in `attribution`).
+- **Propagazione:** dettaglio della risposta, CSV (colonne per le chiavi presenti), webhook (`attribution`, rimossa da `raw_data`), segnaposto `{utm_*}` e `{pagina_form}` (anche nell'editor, con l'opzione attiva, e con valori di esempio nell'email di test), export DSAR, dichiarazione `dbfb_submissions` aggiornata.
 
 ### 2.16.0 — Consensi facoltativi per voce + revoca (art. 7.3)
 
@@ -736,6 +761,7 @@ db-form-builder/
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)
+│   ├── class-attribution.php        # Provenienza della campagna: chiavi UTM, sanitizzazione, segnaposto (2.17.0+)
 │   ├── class-settings.php           # Impostazioni globali, test reCAPTCHA/email, cleanup AJAX
 │   ├── class-appearance.php         # Colori del frontend come variabili CSS (2.12.0+)
 │   ├── class-gdpr-compliance-notice.php # Avviso form senza consenso (2.10.0+)

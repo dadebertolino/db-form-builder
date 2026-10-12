@@ -126,6 +126,19 @@ class DBFB_Submissions {
             /* translators: %s: chiave del consenso facoltativo */
             $headers[] = sprintf(__('Consenso: %s', 'db-form-builder'), $ck);
         }
+
+        // 2.17.0: colonne della provenienza, solo per le chiavi presenti in
+        // almeno una risposta (nessuna colonna se l'opzione non è mai stata usata).
+        $attribution_keys = array();
+        foreach ($submissions as $sub_for_keys) {
+            $attr_info = DB_Form_Builder::get_submission_fields($sub_for_keys, array());
+            foreach (array_keys($attr_info['attribution']) as $ak) {
+                if (!in_array($ak, $attribution_keys, true)) $attribution_keys[] = $ak;
+            }
+        }
+        foreach ($attribution_keys as $ak) {
+            $headers[] = DBFB_Attribution::label($ak);
+        }
         fputcsv($output, array_map(array(__CLASS__, 'csv_escape'), $headers), ';');
 
         foreach ($submissions as $submission) {
@@ -177,6 +190,9 @@ class DBFB_Submissions {
                 $c = $sub_consents[$ck];
                 $when = !empty($c->revoked_at) ? $c->revoked_at : $c->given_at;
                 $row[] = DBFB_Consents::status_label($c) . ' (' . date('d/m/Y H:i', strtotime($when)) . ')';
+            }
+            foreach ($attribution_keys as $ak) {
+                $row[] = (string) ($info['attribution'][$ak] ?? '');
             }
             fputcsv($output, array_map(array(__CLASS__, 'csv_escape'), $row), ';');
         }

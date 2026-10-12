@@ -105,6 +105,9 @@ if (!class_exists('DBFB_Webhook')) {
             // Esclude metadati interni dal raw_data (vedi 2.6.0).
             $raw_data_clean = $form_data;
             unset($raw_data_clean['_fields_snapshot']);
+            // 2.17.0: la provenienza va nella chiave dedicata "attribution".
+            unset($raw_data_clean[DBFB_Attribution::DATA_KEY]);
+            $attribution = DBFB_Attribution::from_data($form_data);
 
             // 2.8.0: include URL dell'informativa privacy nel payload.
             // Permette al destinatario (CRM, Zapier, ecc.) di sapere a quale
@@ -116,7 +119,7 @@ if (!class_exists('DBFB_Webhook')) {
                 $privacy_url = get_privacy_policy_url();
             }
 
-            return array(
+            $payload = array(
                 'form_id'      => $form->ID,
                 'form_title'   => $form->post_title,
                 'submitted_at' => current_time('c'),
@@ -125,6 +128,11 @@ if (!class_exists('DBFB_Webhook')) {
                 'fields'       => $fields_data,
                 'raw_data'     => $raw_data_clean,
             );
+            // 2.17.0: chiave aggiuntiva solo se c'è provenienza registrata.
+            if ($attribution) {
+                $payload['attribution'] = $attribution;
+            }
+            return $payload;
         }
 
         /**

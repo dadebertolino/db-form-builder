@@ -176,6 +176,15 @@
                         <input type="text" id="dbfb-redirect-url" value="<?php echo esc_attr($form_settings['redirect_url']); ?>" placeholder="/grazie/">
                         <p class="description"><?php _e('Una pagina di questo sito, come path (/grazie/) o URL completo. Il messaggio di successo viene mostrato per un istante prima del cambio pagina e l\'evento JavaScript dbfb:submitted parte prima del redirect.', 'db-form-builder'); ?></p>
                     </div>
+
+                    <?php // 2.17.0: provenienza della campagna ?>
+                    <div class="dbfb-settings-row">
+                        <label>
+                            <input type="checkbox" id="dbfb-track-attribution" <?php checked(!empty($form_settings['track_attribution'])); ?>>
+                            <?php _e('Registra la provenienza della campagna (UTM)', 'db-form-builder'); ?>
+                        </label>
+                        <p class="description"><?php _e('Salva con la risposta i parametri utm_source, utm_medium, utm_campaign, utm_term e utm_content presenti nell\'URL della pagina del form, più il percorso della pagina. Si leggono solo dall\'URL al momento dell\'invio: nulla viene salvato sul dispositivo del visitatore, quindi non serve il consenso cookie. Se il visitatore arriva su un\'altra pagina e poi raggiunge il form navigando, gli UTM non vengono registrati.', 'db-form-builder'); ?></p>
+                    </div>
                     
                     <?php 
                     $global_settings = DB_Form_Builder::get_global_settings();

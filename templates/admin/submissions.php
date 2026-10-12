@@ -166,6 +166,7 @@
                                    data-gdpr-timestamp="<?php echo esc_attr( (string) ($submission->gdpr_consent_timestamp ?? '') ); ?>"
                                    data-gdpr-url="<?php echo esc_attr( (string) ($submission->gdpr_consent_privacy_url ?? '') ); ?>"
                                    data-gdpr-version="<?php echo esc_attr( (string) (int) ($submission->gdpr_consent_policy_version ?? 0) ); ?>"
+                                   data-attribution="<?php echo esc_attr(wp_json_encode((object) $info['attribution'])); // 2.17.0 ?>"
                                    data-consents="<?php
                                    // 2.16.0: consensi facoltativi della risposta.
                                    echo esc_attr(wp_json_encode(array_map(function ($c) {
@@ -274,6 +275,20 @@ jQuery(document).ready(function($) {
             consentBlock += '<tr><td colspan="2" style="font-size:13px;color:#666"><?php echo esc_js(__('Submission inserita prima dell\'aggiornamento alla 2.11.0 oppure form privo di checkbox di consenso senza dichiarazione consapevole. La conformità GDPR per questa specifica submission non è documentabile.', 'db-form-builder')); ?></td></tr>';
         }
         html += consentBlock;
+
+        // 2.17.0: provenienza della campagna.
+        var attribution = {};
+        try { attribution = JSON.parse($link.attr('data-attribution') || '{}') || {}; } catch (err) { attribution = {}; }
+        var attrLabels = <?php echo wp_json_encode(array_combine(
+            array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'landing'),
+            array_map(array('DBFB_Attribution', 'label'), array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'landing'))
+        )); ?>;
+        if (Object.keys(attribution).length) {
+            html += '<tr style="background:#f6f7f7"><th colspan="2" style="padding-top:14px;border-top:2px solid #8c8f94;color:#1d2327"><?php echo esc_js(__('Provenienza della campagna', 'db-form-builder')); ?></th></tr>';
+            Object.keys(attribution).forEach(function(k) {
+                html += '<tr><th>' + $('<span>').text(attrLabels[k] || k).html() + '</th><td>' + $('<span>').text(attribution[k]).html() + '</td></tr>';
+            });
+        }
 
         // 2.16.0: consensi facoltativi, con revoca manuale.
         var optional = [];
