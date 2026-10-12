@@ -142,6 +142,159 @@
     }
     
     // =========================================================
+    // PRECOMPILAZIONE DA URL (2.15.0)
+    // =========================================================
+    //
+    // Il server stampa solo data-dbfb-prefill="parametro" sul gruppo del
+    // campo (markup identico per tutti, cache-safe). Qui leggiamo l'URL e
+    // applichiamo solo valori validi per il tipo di campo. Lato server vale
+    // comunque la sanitizzazione per tipo all'invio.
+
+    var PREFILL_MAX_LENGTH = 500;
+    // Un indirizzo email nell'URL finisce in log, cronologia, Referer e
+    // analytics: non lo usiamo mai, nemmeno nei campi nascosti.
+    var EMAIL_LIKE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+
+    // Parametri dell'URL: chiavi senza distinzione maiuscole/minuscole, se
+    // un parametro è ripetuto vale il primo.
+    function getUrlParams() {
+        var map = {};
+        var search = window.location.search.replace(/^\?/, '');
+        if (!search) return map;
+        search.split('&').forEach(function(pair) {
+            if (!pair) return;
+            var idx = pair.indexOf('=');
+            var key = idx < 0 ? pair : pair.slice(0, idx);
+            var val = idx < 0 ? '' : pair.slice(idx + 1);
+            try {
+                key = decodeURIComponent(key.replace(/\+/g, ' ')).toLowerCase();
+                val = decodeURIComponent(val.replace(/\+/g, ' '));
+            } catch (e) {
+                return; // codifica non valida: parametro ignorato
+            }
+            if (!Object.prototype.hasOwnProperty.call(map, key)) map[key] = val;
+        });
+        return map;
+    }
+
+    function isValidDate(str) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+        var p = str.split('-').map(Number);
+        var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+        return d.getUTCFullYear() === p[0] && d.getUTCMonth() === p[1] - 1 && d.getUTCDate() === p[2];
+    }
+
+    function isValidNumber(str, $input) {
+        if (!/^-?\d+(\.\d+)?$/.test(str)) return false;
+        var n = parseFloat(str);
+        var min = $input.attr('min'), max = $input.attr('max');
+        if (min !== undefined && min !== '' && n < parseFloat(min)) return false;
+        if (max !== undefined && max !== '' && n > parseFloat(max)) return false;
+        return true;
+    }
+
+    function isValidHttpUrl(str) {
+        if (!/^https?:\/\//i.test(str)) return false;
+        try { new URL(str); return true; } catch (e) { return false; }
+    }
+
+    // Applica un valore al gruppo. Ritorna true se il campo è stato valorizzato.
+    function prefillGroup($group, raw) {
+        var value = String(raw).trim();
+        if (value === '' || value.length > PREFILL_MAX_LENGTH || EMAIL_LIKE.test(value)) return false;
+        var lower = value.toLowerCase();
+
+        // Campo nascosto: il valore dell'URL sostituisce quello statico.
+        var $hidden = $group.find('input[type="hidden"]');
+        if ($group.hasClass('dbfb-hidden-field') && $hidden.length) {
+            $hidden.val(value).trigger('change');
+            return true;
+        }
+
+        // Radio: solo un valore che coincide con un'opzione; mai se l'utente
+        // (o la navigazione indietro) ha già scelto.
+        var $radios = $group.find('input[type="radio"]');
+        if ($radios.length) {
+            if ($radios.filter(':checked').length) return false;
+            var $match = $radios.filter(function() { return String(this.value).toLowerCase() === lower; }).first();
+            if (!$match.length) return false;
+            $match.prop('checked', true).trigger('change');
+            return true;
+        }
+
+        // Checkbox: più valori separati da virgola, solo opzioni esistenti.
+        var $boxes = $group.find('input[type="checkbox"]');
+        if ($boxes.length) {
+            if ($boxes.filter(':checked').length) return false;
+            var wanted = lower.split(',').map(function(v) { return v.trim(); }).filter(Boolean);
+            var $hit = $boxes.filter(function() { return wanted.indexOf(String(this.value).toLowerCase()) !== -1; });
+            if (!$hit.length) return false;
+            $hit.prop('checked', true);
+            $hit.last().trigger('change');
+            return true;
+        }
+
+        // Select: l'opzione vuota "Seleziona..." conta come non compilato.
+        var $select = $group.find('select');
+        if ($select.length) {
+            if ($select.val()) return false;
+            var $opt = $select.find('option').filter(function() {
+                return this.value !== '' && String(this.value).toLowerCase() === lower;
+            }).first();
+            if (!$opt.length) return false;
+            $select.val($opt.val()).trigger('change');
+            return true;
+        }
+
+        var $input = $group.find('textarea, input').first();
+        if (!$input.length || $input.val()) return false; // autofill o valore già presente
+        var type = ($input.attr('type') || ($input.is('textarea') ? 'textarea' : 'text')).toLowerCase();
+        if (type === 'date' && !isValidDate(value)) return false;
+        if (type === 'number' && !isValidNumber(value, $input)) return false;
+        if (type === 'url' && !isValidHttpUrl(value)) return false;
+        if (type === 'email' || type === 'tel' || type === 'file') return false;
+        $input.val(value).trigger('change');
+        return true;
+    }
+
+    function applyPrefill($form, params) {
+        var filled = [];
+        $form.find('[data-dbfb-prefill]').each(function() {
+            var $group = $(this);
+            var param = String($group.attr('data-dbfb-prefill') || '').toLowerCase();
+            if (!param || !Object.prototype.hasOwnProperty.call(params, param)) return;
+            if (prefillGroup($group, params[param])) filled.push(String($group.data('field-id')));
+        });
+        return filled;
+    }
+
+    function initPrefill() {
+        var params = getUrlParams();
+        if ($.isEmptyObject(params)) return;
+        $('.dbfb-form').each(function() {
+            var $form = $(this);
+            var filled = applyPrefill($form, params);
+            if (filled.length) {
+                // Solo gli id dei campi, mai i valori (possono essere dati personali).
+                dispatchFormEvent($form, 'dbfb:prefilled', { formId: $form.data('form-id'), fields: filled });
+            }
+        });
+    }
+
+    // Evento DOM nativo (2.15.0): ascoltabile anche senza jQuery, risale
+    // fino a document.
+    function dispatchFormEvent($form, name, detail) {
+        var ev;
+        try {
+            ev = new CustomEvent(name, { bubbles: true, detail: detail });
+        } catch (e) {
+            ev = document.createEvent('CustomEvent');
+            ev.initCustomEvent(name, true, false, detail);
+        }
+        $form[0].dispatchEvent(ev);
+    }
+
+    // =========================================================
     // FILE UPLOAD — DRAG & DROP
     // =========================================================
     
@@ -547,8 +700,20 @@
                         return;
                     }
                     if (response.success) {
+                        var redirectUrl = (response.data && response.data.redirect) || '';
+                        // 2.15.0: evento di conversione, senza dati personali.
+                        // Il tracciamento (se c'è) lo fa il tema, col consenso.
+                        dispatchFormEvent($form, 'dbfb:submitted', { formId: formId, redirect: redirectUrl !== '' });
                         showMessage($form, 'success', response.data.message);
+                        if (redirectUrl) {
+                            // Piccolo margine perché i listener di dbfb:submitted
+                            // possano inviare il loro hit prima del cambio pagina.
+                            setTimeout(function() { window.location.assign(redirectUrl); }, 300);
+                            return;
+                        }
                         $form[0].reset();
+                        // 2.15.0: il form torna pronto con gli stessi valori da URL.
+                        applyPrefill($form, getUrlParams());
                         $form.find('.dbfb-file-list').empty();
                         $form.find('.dbfb-file-dropzone').removeClass('dbfb-file-has-files');
                         if (rcMode === 'v2' && typeof grecaptcha !== 'undefined' && v2WidgetId !== undefined) grecaptcha.reset(v2WidgetId);
@@ -816,6 +981,9 @@
     
     $(document).ready(function() {
         evaluateRecaptchaGate();
+        // Prima della logica condizionale, così i campi precompilati
+        // mostrano/nascondono subito i campi collegati.
+        initPrefill();
         initConditionalLogic();
         initFileUploads();
         initMultiStep();

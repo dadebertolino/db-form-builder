@@ -321,9 +321,54 @@ class DBFB_Submit {
             );
         }
 
-        wp_send_json_success([
+        $response = [
             'message' => $form_settings['success_message'] ?? __('Form inviato con successo!', 'db-form-builder')
-        ]);
+        ];
+        // 2.15.0: il redirect lo esegue il client dopo l'evento dbfb:submitted.
+        // URL riverificato qui: l'impostazione potrebbe essere stata
+        // modificata direttamente nel database.
+        if (($form_settings['after_submit'] ?? '') === 'redirect') {
+            $redirect = self::validate_redirect_url($form_settings['redirect_url'] ?? '', $form_id);
+            if ($redirect !== '') $response['redirect'] = $redirect;
+        }
+        wp_send_json_success($response);
+    }
+
+    /**
+     * URL di redirect dopo l'invio, solo verso il sito stesso (2.15.0).
+     *
+     * Ammessi: URL http(s) con host uguale a home_url() o site_url(), oppure
+     * path relativi alla radice del dominio ("/grazie/"). Domini esterni solo
+     * con il filter dbfb_redirect_allow_external (evita open redirect usati
+     * per phishing).
+     *
+     * @param string $url
+     * @param int    $form_id
+     * @return string URL assoluto valido, '' se non ammesso.
+     */
+    public static function validate_redirect_url($url, $form_id = 0) {
+        $url = trim((string) $url);
+        if ($url === '') return '';
+
+        $home = wp_parse_url(home_url());
+        $origin = ($home['scheme'] ?? 'https') . '://' . ($home['host'] ?? '') . (isset($home['port']) ? ':' . $home['port'] : '');
+
+        // Path relativo alla radice (ma non "//host", che è un URL esterno).
+        if ($url[0] === '/' && (strlen($url) === 1 || $url[1] !== '/')) {
+            $url = $origin . $url;
+        }
+
+        $url = esc_url_raw($url, ['http', 'https']);
+        $host = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
+        if ($url === '' || $host === '') return '';
+
+        $own_hosts = array_unique(array_filter([
+            strtolower((string) wp_parse_url(home_url(), PHP_URL_HOST)),
+            strtolower((string) wp_parse_url(site_url(), PHP_URL_HOST)),
+        ]));
+        if (in_array($host, $own_hosts, true)) return $url;
+
+        return apply_filters('dbfb_redirect_allow_external', false, $url, (int) $form_id) ? $url : '';
     }
 
     /**
@@ -573,6 +618,9 @@ class DBFB_Submit {
                     break;
                 case 'textarea':
                     $clean[$key] = sanitize_textarea_field($value);
+                    break;
+                case 'hidden':
+                    $clean[$key] = mb_substr(sanitize_text_field($value), 0, DBFB_Prefill::HIDDEN_MAX_LENGTH);
                     break;
                 default:
                     $clean[$key] = sanitize_text_field($value);

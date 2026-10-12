@@ -658,6 +658,8 @@ class DB_Form_Builder {
 
         wp_localize_script('dbfb-admin', 'dbfb', [
             'ajax_url' => admin_url('admin-ajax.php'),
+            // 2.15.0: tipi precompilabili da URL (filter dbfb_prefill_allowed_types).
+            'prefill_types' => DBFB_Prefill::allowed_types(),
             'nonce' => wp_create_nonce('dbfb_nonce'),
             'strings' => [
                 'confirm_delete' => __('Sei sicuro di voler eliminare questo campo?', 'db-form-builder'),

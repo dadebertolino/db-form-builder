@@ -231,6 +231,18 @@
                 frame.open();
             });
             
+            // 2.15.0: mostra il nome del parametro già normalizzato.
+            $(document).on('change', '.field-prefill-param', (e) => {
+                const $input = $(e.currentTarget);
+                $input.val(this.normalizePrefillParam($input.val() || ''));
+                this.updateFieldData($input.closest('.dbfb-field-item'));
+            });
+
+            // 2.15.0: URL di redirect visibile solo con "Reindirizza".
+            $(document).on('change', 'input[name="dbfb-after-submit"]', function() {
+                $('#dbfb-redirect-row').prop('hidden', this.value !== 'redirect');
+            });
+
             // Documenti della conferma (2.14.0): selezione multipla dalla
             // Media Library, salvati come ID e inviati come link.
             $(document).on('click', '#dbfb-add-documents', (e) => {
@@ -343,6 +355,7 @@
             let html = '';
             
             this.fields.forEach(field => {
+                if (field.type === 'hidden') return; // 2.15.0: non visibile
                 if (field.type === 'divider') {
                     html += '<div style="margin:20px 0;"><hr></div>';
                     return;
@@ -422,7 +435,9 @@
                 conditions: { enabled: false, action: 'show', logic: 'all', rules: [] },
                 file_extensions: type === 'file' ? 'jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,zip' : '',
                 file_max_size: type === 'file' ? 5 : 0,
-                file_multiple: false
+                file_multiple: false,
+                prefill_param: '',
+                default_value: ''
             };
             
             this.fields.push(field);
@@ -517,6 +532,25 @@
                 return html;
             }
             
+            if (field.type === 'hidden') {
+                return `
+                    <div class="dbfb-field-row">
+                        <label>Etichetta</label>
+                        <input type="text" class="field-label-input" value="${this.escapeHtml(field.label)}">
+                        <p class="description">Non è mostrata nel form: serve a riconoscere il valore in Risposte, CSV, email e webhook.</p>
+                    </div>
+                    <div class="dbfb-field-row">
+                        <label>Valore</label>
+                        <input type="text" class="field-default-value" value="${this.escapeHtml(field.default_value || '')}" maxlength="500" placeholder="es. hero">
+                        <p class="description">Valore inviato se l'URL non contiene il parametro qui sotto.</p>
+                    </div>
+                    ${this.getPrefillHTML(field)}
+                    <div class="dbfb-field-row">
+                        <p class="description">Il valore arriva dalla pagina o dall'URL, quindi chiunque può cambiarlo: usalo per statistiche (es. da quale pulsante arriva la richiesta), non per dati di cui fidarsi. Gli indirizzi email nell'URL vengono sempre ignorati.</p>
+                    </div>
+                `;
+            }
+
             if (field.type === 'image') {
                 return `
                     <div class="dbfb-field-row">
@@ -570,6 +604,11 @@
                     </label>
                 </div>
             `;
+
+            // 2.15.0: precompilazione da URL, solo per i tipi ammessi.
+            if ((dbfb.prefill_types || []).includes(field.type)) {
+                html += this.getPrefillHTML(field);
+            }
             
             // Logica condizionale
             html += this.getConditionsHTML(field);
@@ -577,7 +616,30 @@
             return html;
         },
         
+        // 2.15.0: impostazione "Parametro URL per precompilare".
+        getPrefillHTML: function(field) {
+            const param = this.normalizePrefillParam(field.prefill_param || '');
+            const sample = field.type === 'date' ? '2026-11-01' : (field.type === 'number' ? '2' : 'valore');
+            return `
+                <div class="dbfb-field-row">
+                    <label>Parametro URL per precompilare</label>
+                    <input type="text" class="field-prefill-param" value="${this.escapeHtml(param)}" maxlength="40" placeholder="es. arrivo" data-sample="${sample}">
+                    <p class="description dbfb-prefill-hint">${this.prefillHint(param, sample)}</p>
+                </div>
+            `;
+        },
+
+        normalizePrefillParam: function(value) {
+            return String(value).toLowerCase().replace(/[^a-z0-9_\-]/g, '').slice(0, 40);
+        },
+
+        prefillHint: function(param, sample) {
+            if (!param) return 'Facoltativo. Lettere minuscole, numeri, - e _. Con un parametro il campo si compila da un link, es. <code>?arrivo=' + this.escapeHtml(sample) + '</code>.';
+            return 'Esempio di link: <code>…/pagina/?' + this.escapeHtml(param) + '=' + this.escapeHtml(sample) + '</code>. Valori non validi per il campo vengono ignorati.';
+        },
+
         getConditionsHTML: function(field) {
+            if (field.type === 'hidden') return ''; // non visibile: niente condizioni proprie
             const conditions = field.conditions || { enabled: false, action: 'show', logic: 'all', rules: [] };
             const otherFields = this.fields.filter(f => f.id !== field.id && !['divider','html','image'].includes(f.type));
             
@@ -702,6 +764,13 @@
                 field.file_extensions = $item.find('.field-file-extensions').val() || '';
                 field.file_max_size = parseInt($item.find('.field-file-max-size').val()) || 5;
                 field.file_multiple = $item.find('.field-file-multiple').is(':checked');
+                // 2.15.0
+                const $prefill = $item.find('.field-prefill-param');
+                field.prefill_param = $prefill.length ? this.normalizePrefillParam($prefill.val() || '') : '';
+                if ($prefill.length) {
+                    $item.find('.dbfb-prefill-hint').html(this.prefillHint(field.prefill_param, $prefill.data('sample') || 'valore'));
+                }
+                field.default_value = $item.find('.field-default-value').val() || '';
                 
                 // Logica condizionale
                 const condEnabled = $item.find('.field-conditions-enabled').is(':checked');
@@ -767,6 +836,7 @@
                 'image': 'Immagine',
                 'divider': 'Separatore',
                 'file': 'Upload file',
+                'hidden': 'Campo nascosto',
                 'pagebreak': 'Cambio pagina'
             };
             return labels[type] || 'Campo';
@@ -788,6 +858,7 @@
                 'image': 'dashicons-format-image',
                 'divider': 'dashicons-minus',
                 'file': 'dashicons-paperclip',
+                'hidden': 'dashicons-hidden',
                 'pagebreak': 'dashicons-editor-break'
             };
             return icons[type] || 'dashicons-admin-generic';
@@ -810,6 +881,8 @@
             const settings = {
                 submit_text: $('#dbfb-submit-text').val(),
                 success_message: $('#dbfb-success-message').val(),
+                after_submit: $('input[name="dbfb-after-submit"]:checked').val() || 'message',
+                redirect_url: $('#dbfb-redirect-url').val(),
                 enable_captcha: $('#dbfb-enable-captcha').is(':checked'),
                 enable_honeypot: $('#dbfb-enable-honeypot').is(':checked'),
                 enable_gdpr: $('#dbfb-enable-gdpr').is(':checked'),
