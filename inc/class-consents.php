@@ -97,14 +97,14 @@ class DBFB_Consents {
      * Chiave: sanitize_key, max 40 caratteri, unica (derivata dal testo se
      * vuota). Voci senza testo scartate. Massimo MAX_PER_FORM.
      *
-     * @param mixed $list
+     * @param mixed $items
      * @return array Lista di ['key','text','privacy_url','purpose'].
      */
-    public static function sanitize_definitions($list) {
-        if (!is_array($list)) return [];
+    public static function sanitize_definitions($items) {
+        if (!is_array($items)) return [];
         $clean = [];
         $keys  = [];
-        foreach ($list as $item) {
+        foreach ($items as $item) {
             if (!is_array($item)) continue;
             $text = sanitize_text_field($item['text'] ?? '');
             if ($text === '') continue;
@@ -448,7 +448,8 @@ class DBFB_Consents {
                 wp_die(esc_html__('Richiesta non valida: apri di nuovo il link dall\'email e riprova.', 'db-form-builder'), esc_html($title), ['response' => 403]);
             }
             $chosen = isset($_POST['consent_ids']) ? array_map('absint', (array) wp_unslash($_POST['consent_ids'])) : [];
-            $allowed = array_map(function ($row) { return (int) $row->id; }, $active);
+            $allowed = wp_list_pluck($active, 'id');
+            $allowed = array_map('intval', $allowed);
             $count = self::revoke(array_intersect($chosen, $allowed), 'link');
             $message = $count > 0
                 ? sprintf(
