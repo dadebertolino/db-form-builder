@@ -99,7 +99,7 @@ class DBFB_Email {
     }
 
     /**
-     * Elenco dei documenti della conferma, uno per riga (2.14.0).
+     * Documenti della conferma ancora esistenti (2.14.0).
      *
      * I file sono allegati della Media Library scelti dall'admin, quindi
      * pubblici per natura: nell'email va il link, non il file. Così l'email
@@ -108,20 +108,34 @@ class DBFB_Email {
      * Gli allegati cancellati nel frattempo vengono saltati.
      *
      * @param array $settings Impostazioni del form.
-     * @return string "- Titolo: URL" per riga, '' se non ci sono documenti.
+     * @return array Lista di ['title' => string, 'url' => string].
      */
-    public static function documents_text($settings) {
+    private static function documents($settings) {
         $ids = $settings['confirmation_documents'] ?? [];
-        if (!is_array($ids) || empty($ids)) return '';
+        if (!is_array($ids)) return [];
 
-        $lines = [];
+        $docs = [];
         foreach ($ids as $id) {
             $id  = absint($id);
             $url = $id ? wp_get_attachment_url($id) : false;
             if (!$url) continue;
             $title = trim(html_entity_decode(wp_strip_all_tags((string) get_post_field('post_title', $id)), ENT_QUOTES, 'UTF-8'));
             if ($title === '') $title = wp_basename($url);
-            $lines[] = '- ' . $title . ': ' . $url;
+            $docs[] = ['title' => $title, 'url' => $url];
+        }
+        return $docs;
+    }
+
+    /**
+     * Elenco dei documenti in testo semplice, uno per riga (2.14.0).
+     *
+     * @param array $settings Impostazioni del form.
+     * @return string "- Titolo: URL" per riga, '' se non ci sono documenti.
+     */
+    public static function documents_text($settings) {
+        $lines = [];
+        foreach (self::documents($settings) as $doc) {
+            $lines[] = '- ' . $doc['title'] . ': ' . $doc['url'];
         }
         return implode("\n", $lines);
     }
@@ -135,7 +149,7 @@ class DBFB_Email {
      */
     private static function confirmation_template($settings) {
         $message = (string) ($settings['confirmation_message'] ?? '');
-        if (strpos($message, '{documenti}') === false && self::documents_text($settings) !== '') {
+        if (strpos($message, '{documenti}') === false && self::documents($settings)) {
             $message = rtrim($message) . "\n\n" . __('Documenti:', 'db-form-builder') . "\n{documenti}";
         }
         return $message;
@@ -196,13 +210,74 @@ class DBFB_Email {
         return $headers;
     }
 
-    public static function send_confirmation($to, $settings, $placeholders) {
-        list($subject, $message) = self::build_email(
-            $settings['confirmation_subject'] ?? '',
-            self::confirmation_template($settings),
-            $placeholders
+    /**
+     * Oggetto, testo e (se ci sono documenti) HTML della conferma (2.14.1).
+     *
+     * In testo semplice un URL è cliccabile solo se il client di posta lo
+     * riconosce da solo, e molti non lo fanno. Con documenti da inviare la
+     * conferma diventa quindi HTML con link veri, più la versione testo come
+     * alternativa. Il testo dell'admin e i valori dell'utente sono passati da
+     * esc_html: solo i link dei documenti diventano <a>, mai gli URL scritti
+     * nei campi del form (niente link cliccabili di terzi inviati dal sito).
+     *
+     * @return array [subject, plain, html] — html '' se non ci sono documenti.
+     */
+    private static function build_confirmation($settings, $placeholders) {
+        $template = self::confirmation_template($settings);
+        list($subject, $plain) = self::build_email($settings['confirmation_subject'] ?? '', $template, $placeholders);
+
+        $docs = self::documents($settings);
+        if (!$docs) return [$subject, $plain, ''];
+
+        // Segnaposto temporaneo casuale (solo alfanumerici, esc_html non lo
+        // tocca): un valore dell'utente non può indovinarlo.
+        $token = 'dbfbdocs' . wp_generate_password(20, false);
+        list(, $marked) = self::build_email('', $template, array_merge($placeholders, ['{documenti}' => $token]));
+
+        $items = '';
+        foreach ($docs as $doc) {
+            $items .= '<li><a href="' . esc_url($doc['url']) . '">' . esc_html($doc['title']) . '</a></li>';
+        }
+        // Il <br> dopo il segnaposto andrebbe sotto la lista come riga vuota.
+        $body = str_replace(
+            [$token . '<br>', $token],
+            '<ul style="margin:0;padding-left:20px;">' . $items . '</ul>',
+            nl2br(esc_html($marked), false)
         );
-        return wp_mail($to, $subject, $message, self::get_headers());
+
+        $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'
+            . '<body style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1d2327;">'
+            . $body
+            . '</body></html>';
+
+        return [$subject, $plain, $html];
+    }
+
+    /**
+     * Invia la conferma: text/plain, oppure HTML + alternativa testo (2.14.1).
+     */
+    private static function send_confirmation_mail($to, $subject, $plain, $html) {
+        if ($html === '') {
+            return wp_mail($to, $subject, $plain, self::get_headers());
+        }
+
+        $headers = self::get_headers();
+        $headers[0] = 'Content-Type: text/html; charset=UTF-8';
+
+        // wp_mail azzera AltBody prima di phpmailer_init: lo impostiamo lì,
+        // e PHPMailer genera un messaggio multipart/alternative.
+        $set_alt = function ($phpmailer) use ($plain) {
+            $phpmailer->AltBody = $plain;
+        };
+        add_action('phpmailer_init', $set_alt);
+        $sent = wp_mail($to, $subject, $html, $headers);
+        remove_action('phpmailer_init', $set_alt);
+        return $sent;
+    }
+
+    public static function send_confirmation($to, $settings, $placeholders) {
+        list($subject, $plain, $html) = self::build_confirmation($settings, $placeholders);
+        return self::send_confirmation_mail($to, $subject, $plain, $html);
     }
 
     public static function send_admin($settings, $placeholders) {
@@ -281,24 +356,17 @@ class DBFB_Email {
             $form_settings,
             $email_type === 'confirmation' ? 'user' : 'admin'
         );
-        $headers = self::get_headers();
-
         if ($email_type === 'confirmation') {
-            list($subject, $message) = self::build_email(
-                $form_settings['confirmation_subject'] ?? '',
-                self::confirmation_template($form_settings),
-                $placeholders
-            );
+            list($subject, $plain, $html) = self::build_confirmation($form_settings, $placeholders);
+            $sent = self::send_confirmation_mail($test_email, '[TEST] ' . $subject, $plain, $html);
         } else {
             list($subject, $message) = self::build_email(
                 $form_settings['admin_subject'] ?? '',
                 $form_settings['admin_message'] ?? '',
                 $placeholders
             );
+            $sent = wp_mail($test_email, '[TEST] ' . $subject, $message, self::get_headers());
         }
-        $subject = '[TEST] ' . $subject;
-
-        $sent = wp_mail($test_email, $subject, $message, $headers);
 
         if ($sent) {
             wp_send_json_success(['message' => 'Email di test inviata a ' . $test_email]);

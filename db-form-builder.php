@@ -3,7 +3,7 @@
  * Plugin Name: DB Form Builder
  * Plugin URI: https://www.davidebertolino.it
  * Description: Form builder con drag & drop, logica condizionale, reCAPTCHA gated dal consenso, email personalizzabili, export CSV con header esplicativi. Privacy by design: IP hashato, retention con pulizia allegati, snapshot fields, integrazione DSAR WordPress + DB Privacy Hub, informativa privacy per singolo form, monitoraggio conformità consenso GDPR. Webhook async con retry + HMAC signing.
- * Version: 2.14.0
+ * Version: 2.14.1
  * Author: Davide Bertolino
  * Author URI: https://www.davidebertolino.it
  * Text Domain: db-form-builder
@@ -14,7 +14,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DBFB_VERSION', '2.14.0');
+define('DBFB_VERSION', '2.14.1');
 define('DBFB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DBFB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBFB_PLUGIN_FILE', __FILE__);
