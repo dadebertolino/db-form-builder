@@ -266,7 +266,7 @@ Pattern industry-standard usato da Stripe e GitHub. Il timestamp protegge da rep
 **Allegati nel payload (2.13.0+).** La cartella `uploads/dbfb/` non è più raggiungibile direttamente, quindi nel payload il valore `url` di ogni allegato (in `fields[].value` e in `raw_data`) è un link pubblico firmato: `admin-post.php?action=dbfb_file&f=<path>&exp=<timestamp>&sig=<hmac>`. Le chiavi del payload non cambiano. Il link non richiede login, scade dopo 7 giorni (filter `dbfb_webhook_file_link_ttl`, in secondi) ed è firmato con HMAC SHA-256 su `path|scadenza` con un secret dedicato (option `dbfb_file_link_secret`, generata una sola volta; cancellandola si invalidano tutti i link emessi). Il file viene servito come allegato, con `nosniff` e header anti-cache, con lo stesso controllo `realpath` del download admin. Il link è generato al momento di ogni tentativo di invio (anche nei retry automatici e nel "Re-invia" manuale), quindi è sempre valido per l'intero TTL dal momento della consegna. Chi scarica gli allegati in modo asincrono deve farlo entro il TTL. Per tornare all'URL diretto (inutile se la cartella è protetta): `add_filter('dbfb_webhook_signed_file_links', '__return_false');`.
 
 ### Email
-Configura il mittente nelle Impostazioni globali (se l'indirizzo non è valido si usa il mittente predefinito di WordPress). Personalizza oggetto e messaggio per ogni form. Più destinatari admin separati da virgola. Le email sono in testo semplice.
+Configura il mittente nelle Impostazioni globali (se l'indirizzo non è valido si usa il mittente predefinito di WordPress). Personalizza oggetto e messaggio per ogni form. Più destinatari admin separati da virgola. Le email sono in testo semplice; dalla 2.14.1 la conferma con documenti allegati è in HTML (link cliccabili) con versione testo alternativa.
 
 Sotto ogni email, nell'editor del form, c'è l'elenco dei segnaposto disponibili: un clic lo inserisce nell'oggetto o nel messaggio, dove si trova il cursore. Segnaposto:
 - `{campo:id}` — Valore di un singolo campo, identificato dal suo id: resta valido anche se l'etichetta viene rinominata. Se il campo viene eliminato, il segnaposto sparisce dall'email — **2.12.0+**
@@ -323,6 +323,10 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.14.1 — Link dei documenti cliccabili
+
+- **Documenti nella conferma:** in un'email in testo semplice il link era cliccabile solo se il client di posta riconosceva l'URL da solo, e molti mostravano solo testo. Quando ci sono documenti da inviare la conferma ora parte in HTML, con un elenco di link veri (titolo del documento cliccabile), più la versione in testo semplice come alternativa (`multipart/alternative`). Il testo del messaggio e i valori inseriti dall'utente sono sempre escapati: diventano link solo i documenti scelti dall'admin, mai gli URL scritti nei campi del form. Senza documenti la conferma resta in testo semplice come prima. Vale anche per "Invia Test".
 
 ### 2.14.0 — Documenti nell'email di conferma
 
