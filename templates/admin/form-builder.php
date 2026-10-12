@@ -105,6 +105,10 @@
                     <span class="dashicons dashicons-paperclip"></span>
                     <span><?php _e('Upload file', 'db-form-builder'); ?></span>
                 </div>
+                <div class="dbfb-field-type" data-type="hidden">
+                    <span class="dashicons dashicons-hidden"></span>
+                    <span><?php _e('Campo nascosto', 'db-form-builder'); ?></span>
+                </div>
                 
                 <div class="dbfb-field-type-divider"><?php _e('Contenuti', 'db-form-builder'); ?></div>
                 
@@ -151,6 +155,26 @@
                     <div class="dbfb-settings-row">
                         <label for="dbfb-success-message"><?php _e('Messaggio di successo', 'db-form-builder'); ?></label>
                         <textarea id="dbfb-success-message"><?php echo esc_textarea($form_settings['success_message']); ?></textarea>
+                    </div>
+
+                    <?php // 2.15.0: messaggio oppure redirect dopo l'invio ?>
+                    <div class="dbfb-settings-row">
+                        <fieldset>
+                            <legend><?php _e('Dopo l\'invio', 'db-form-builder'); ?></legend>
+                            <label>
+                                <input type="radio" name="dbfb-after-submit" value="message" <?php checked($form_settings['after_submit'] !== 'redirect'); ?>>
+                                <?php _e('Mostra il messaggio di successo', 'db-form-builder'); ?>
+                            </label><br>
+                            <label>
+                                <input type="radio" name="dbfb-after-submit" value="redirect" <?php checked($form_settings['after_submit'], 'redirect'); ?>>
+                                <?php _e('Reindirizza a una pagina', 'db-form-builder'); ?>
+                            </label>
+                        </fieldset>
+                    </div>
+                    <div class="dbfb-settings-row" id="dbfb-redirect-row" <?php if ($form_settings['after_submit'] !== 'redirect') echo 'hidden'; ?>>
+                        <label for="dbfb-redirect-url"><?php _e('URL di destinazione', 'db-form-builder'); ?></label>
+                        <input type="text" id="dbfb-redirect-url" value="<?php echo esc_attr($form_settings['redirect_url']); ?>" placeholder="/grazie/">
+                        <p class="description"><?php _e('Una pagina di questo sito, come path (/grazie/) o URL completo. Il messaggio di successo viene mostrato per un istante prima del cambio pagina e l\'evento JavaScript dbfb:submitted parte prima del redirect.', 'db-form-builder'); ?></p>
                     </div>
                     
                     <?php 

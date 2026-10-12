@@ -95,9 +95,14 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
                          <?php if (empty($field['image_alt'])): ?>role="presentation"<?php endif; ?>>
                 <?php endif; ?>
             </div>
+        <?php elseif ($field['type'] === 'hidden'): ?>
+            <?php // 2.15.0: campo nascosto. Valore statico uguale per tutti (cache-safe); frontend.js lo sostituisce col parametro URL se presente. ?>
+            <div class="dbfb-form-group dbfb-hidden-field" data-field-id="<?php echo esc_attr($field['id']); ?>"<?php echo DBFB_Prefill::attr($field); // già escapato ?> hidden>
+                <input type="hidden" name="<?php echo esc_attr($field['id']); ?>" value="<?php echo esc_attr($field['default_value'] ?? ''); ?>">
+            </div>
         <?php else: ?>
         
-        <div class="dbfb-form-group<?php echo $has_conditions ? ' dbfb-conditional' : ''; ?>" data-field-id="<?php echo esc_attr($field['id']); ?>"
+        <div class="dbfb-form-group<?php echo $has_conditions ? ' dbfb-conditional' : ''; ?>" data-field-id="<?php echo esc_attr($field['id']); ?>"<?php echo DBFB_Prefill::attr($field); // già escapato ?>
              <?php if ($has_conditions): ?>data-conditions="<?php echo $conditions_json; ?>"<?php endif; ?>
              <?php if ($initial_hidden): ?>style="display:none;" aria-hidden="true"<?php endif; ?>>
             

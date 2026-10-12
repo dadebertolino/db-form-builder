@@ -9,11 +9,13 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
 
 ## Funzionalità
 
-- **Form Builder drag & drop** — 14 tipi di elemento con riordino visuale
-  - Input: Testo, Email, Textarea, Select, Checkbox, Radio, Telefono, Numero, Data, URL, Upload file
+- **Form Builder drag & drop** — 15 tipi di elemento con riordino visuale
+  - Input: Testo, Email, Textarea, Select, Checkbox, Radio, Telefono, Numero, Data, URL, Upload file, Campo nascosto (2.15.0+)
   - Contenuti: Testo/HTML statico, Immagine, Separatore
   - Struttura: Cambio pagina (multi-step)
 - **Logica condizionale** — Mostra/nascondi campi in base alle risposte (8 operatori, AND/OR)
+- **Precompilazione da URL (2.15.0+)** — I campi si compilano da un link (`?arrivo=2026-11-01`), compatibile con la cache di pagina
+- **Redirect ed eventi JS (2.15.0+)** — Dopo l'invio messaggio o redirect a una pagina del sito; eventi `dbfb:submitted` e `dbfb:prefilled` per il tracciamento delle conversioni
 - **Upload file** — Drag & drop o click, estensioni configurabili, dimensione max per campo, file multipli, validazione client + server
 - **Form multi-step** — Barra di progresso, navigazione avanti/indietro, validazione per step
 - **Webhook** — POST JSON a URL esterno dopo ogni invio (compatibile Zapier, Make, n8n)
@@ -184,6 +186,8 @@ Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)
 | `dbfb_download_capability` | `'manage_options'` | Capability richiesta per scaricare gli allegati (2.13.0+) |
 | `dbfb_webhook_signed_file_links` | `true` | Link firmati per gli allegati nei webhook (2.13.0+, `false` = URL diretto) |
 | `dbfb_webhook_file_link_ttl` | `604800` | Validità in secondi dei link firmati nei webhook (2.13.0+, default 7 giorni) |
+| `dbfb_prefill_allowed_types` | testo, area testo, numero, data, URL, menu, scelta singola, checkbox | Tipi di campo precompilabili da URL (2.15.0+; file e layout mai, il campo nascosto sempre) |
+| `dbfb_redirect_allow_external` | `false` | Consente il redirect dopo l'invio verso domini esterni; riceve `$url` e `$form_id` (2.15.0+) |
 
 Action: `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
 
@@ -233,6 +237,42 @@ Trascina il campo "Upload file" nel builder e configura:
 
 ### Multi-step
 Trascina "Cambio pagina" tra i campi per dividere il form in step. Il frontend mostra automaticamente barra di progresso, bottoni Indietro/Avanti e validazione per step.
+
+### Precompilazione da URL (2.15.0+)
+Nelle impostazioni del campo, "Parametro URL per precompilare" (es. `arrivo`) fa compilare il campo da un link: `https://sito.it/prenota/?arrivo=2026-11-01&camera=suite`. Utile per pulsanti e campagne che portano al form con una scelta già fatta.
+
+- **Tipi ammessi:** testo, area testo, numero, data, URL, menu a tendina, scelta singola, checkbox, campo nascosto. Email e telefono sono esclusi: un dato personale nell'URL finisce in log del server, cronologia, header Referer e analytics. File e campi di layout esclusi sempre. Filter `dbfb_prefill_allowed_types` per cambiare l'elenco.
+- **Nome del parametro:** minuscole, numeri, `-` e `_`, massimo 40 caratteri. Nell'URL non conta maiuscolo/minuscolo; se un parametro è ripetuto vale il primo.
+- **Valori accettati:** date solo `AAAA-MM-GG` valide; numeri solo numerici (nei limiti min/max se presenti); URL solo `http(s)`; menu, scelta singola e checkbox solo valori uguali a un'opzione (senza distinguere maiuscole/minuscole), più checkbox separate da virgola (`?extra=spa,parcheggio`). Massimo 500 caratteri. Un valore che sembra un indirizzo email viene sempre ignorato. I valori non validi si scartano senza errori.
+- **Mai sovrascrivere:** un campo già compilato (autofill del browser, navigazione indietro) resta com'è. Dopo un invio riuscito il form si riprecompila con gli stessi valori.
+- **Logica condizionale:** la precompilazione avviene prima, quindi un campo precompilato mostra o nasconde subito i campi collegati.
+- **Cache di pagina:** il server stampa solo il nome del parametro (`data-dbfb-prefill`), uguale per tutti; l'URL viene letto nel browser. All'invio vale la normale sanitizzazione lato server.
+
+### Campo nascosto (2.15.0+)
+Il tipo "Campo nascosto" non si vede nel form ma viene inviato con le risposte: compare in Risposte, CSV, email (`{campo:id}`) e webhook. Ha un valore fisso, sostituito dal parametro URL se configurato e presente. Caso tipico: sapere da quale pulsante arriva la richiesta (`?origine=hero`, `?origine=ristorante`).
+
+Il valore arriva dalla pagina o dall'URL, quindi chiunque può modificarlo: va bene per statistiche, non per dati di cui fidarsi. Massimo 500 caratteri, mai obbligatorio, niente logica condizionale propria (può però fare da condizione per altri campi).
+
+### Dopo l'invio: messaggio o redirect (2.15.0+)
+In Impostazioni del form, "Dopo l'invio": mostra il messaggio di successo oppure reindirizza a una pagina. L'URL deve essere di questo sito (path come `/grazie/`, relativo alla radice del dominio, o URL completo): viene verificato al salvataggio e di nuovo a ogni invio. Domini esterni solo con il filter `dbfb_redirect_allow_external` (protezione da open redirect). Il redirect avviene nel browser, dopo l'evento `dbfb:submitted`.
+
+### Eventi JavaScript (2.15.0+)
+Eventi DOM nativi sul `<form>`, che risalgono fino a `document` (non serve jQuery). Non contengono mai dati personali.
+
+| Evento | `detail` | Quando |
+|--------|----------|--------|
+| `dbfb:prefilled` | `{ formId, fields: [id campo, …] }` | Dopo la precompilazione da URL, se almeno un campo è stato compilato |
+| `dbfb:submitted` | `{ formId, redirect: bool }` | Dopo un invio riuscito, prima dell'eventuale redirect |
+
+Il tracciamento delle conversioni resta al tema e va subordinato al consenso. Esempio con DB Cookie Manager:
+
+```js
+document.addEventListener('dbfb:submitted', function (e) {
+    if (window.DBCM && window.DBCM.hasConsent('statistics') && typeof window.gtag === 'function') {
+        window.gtag('event', 'generate_lead', { form_id: e.detail.formId });
+    }
+});
+```
 
 ### Webhook (2.7.0+: async, retry, HMAC)
 
@@ -323,6 +363,15 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.15.0 — Precompilazione da URL, campo nascosto, redirect ed eventi
+
+Nessuna migrazione dello schema, nessun cambiamento per i form esistenti finché non si usano le nuove opzioni.
+
+- **Precompilazione da URL:** nuova impostazione per campo "Parametro URL per precompilare" (`prefill_param`, minuscole, `[a-z0-9_-]`, max 40 caratteri), salvata solo per i tipi ammessi (filter `dbfb_prefill_allowed_types`; email e telefono esclusi per default). Nuova classe `DBFB_Prefill`. Il server stampa solo `data-dbfb-prefill` (cache-safe); `frontend.js` legge l'URL, valida il valore per tipo, non sovrascrive valori già presenti e lancia `change` così la logica condizionale reagisce. Un valore che sembra un indirizzo email viene sempre ignorato.
+- **Campo nascosto:** nuovo tipo `hidden` con valore fisso o da parametro URL, sanitizzato con `sanitize_text_field` e massimo 500 caratteri, mai obbligatorio, senza logica condizionale propria. Visibile in Risposte, CSV, email e webhook.
+- **Eventi JS:** `dbfb:submitted` dopo un invio riuscito (`detail: { formId, redirect }`) e `dbfb:prefilled` dopo la precompilazione (`detail: { formId, fields }`), come `CustomEvent` nativi che risalgono fino a `document`, senza dati personali.
+- **Redirect dopo l'invio:** "Dopo l'invio: messaggio | redirect a URL". Solo pagine del sito (path o URL completo con lo stesso host di `home_url()`/`site_url()`), verificato al salvataggio (errore esplicito) e a ogni invio; domini esterni solo con il filter `dbfb_redirect_allow_external`. Il redirect avviene nel browser dopo `dbfb:submitted`.
 
 ### 2.14.1 — Link dei documenti cliccabili
 
@@ -606,6 +655,7 @@ db-form-builder/
 │   ├── class-submit.php             # Submit, honeypot, GDPR, reCAPTCHA gating, file upload, webhook
 │   ├── class-submissions.php        # Risposte, CSV export, download protetto allegati
 │   ├── class-email.php              # Placeholder, invio email, test
+│   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-settings.php           # Impostazioni globali, test reCAPTCHA/email, cleanup AJAX
 │   ├── class-appearance.php         # Colori del frontend come variabili CSS (2.12.0+)
 │   ├── class-gdpr-compliance-notice.php # Avviso form senza consenso (2.10.0+)
@@ -622,7 +672,7 @@ db-form-builder/
 │   │   └── frontend.css
 │   └── js/
 │       ├── admin.js                 # Builder, condizionale, file settings
-│       ├── frontend.js              # Submit, condizionale, file drag&drop, multi-step
+│       ├── frontend.js              # Submit, condizionale, precompilazione, eventi, file drag&drop, multi-step
 │       └── gutenberg-block.js
 └── templates/
     ├── admin/

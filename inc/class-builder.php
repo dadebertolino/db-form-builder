@@ -20,6 +20,9 @@ class DBFB_Builder {
 
         $default_settings = [
             'submit_text' => __('Invia', 'db-form-builder'),
+            // 2.15.0: dopo l'invio mostra il messaggio oppure reindirizza.
+            'after_submit' => 'message',
+            'redirect_url' => '',
             'success_message' => __('Grazie! Il modulo è stato inviato con successo.', 'db-form-builder'),
             'enable_captcha' => false,
             'enable_honeypot' => true,
@@ -83,6 +86,13 @@ class DBFB_Builder {
         $sanitized_fields = self::sanitize_fields($fields);
         $sanitized_settings = self::sanitize_settings($settings);
 
+        // 2.15.0: il redirect deve puntare al sito (salvo filter). Meglio un
+        // errore al salvataggio che un redirect scartato in silenzio all'invio.
+        if ($sanitized_settings['after_submit'] === 'redirect'
+            && DBFB_Submit::validate_redirect_url($sanitized_settings['redirect_url'], $form_id) === '') {
+            wp_send_json_error(['message' => __('URL di redirect non valido: usa un indirizzo di questo sito (es. /grazie/ o l\'URL completo della pagina).', 'db-form-builder')]);
+        }
+
         if ($form_id > 0) {
             wp_update_post(['ID' => $form_id, 'post_title' => $title]);
         } else {
@@ -145,6 +155,23 @@ class DBFB_Builder {
                 ];
             }
 
+            // 2.15.0: parametro URL per la precompilazione, solo per i tipi ammessi.
+            if (DBFB_Prefill::supports($sf['type'])) {
+                $param = DBFB_Prefill::sanitize_param($field['prefill_param'] ?? '');
+                if ($param !== '') $sf['prefill_param'] = $param;
+            }
+
+            // 2.15.0: campo nascosto. Valore statico (usato se l'URL non
+            // porta il parametro), mai obbligatorio, niente logica
+            // condizionale né placeholder: non è visibile.
+            if ($sf['type'] === 'hidden') {
+                $sf['default_value'] = mb_substr(sanitize_text_field($field['default_value'] ?? ''), 0, DBFB_Prefill::HIDDEN_MAX_LENGTH);
+                $sf['required'] = false;
+                $sf['placeholder'] = '';
+                $sf['options'] = [];
+                unset($sf['conditions']);
+            }
+
             $sanitized[] = $sf;
         }
         return $sanitized;
@@ -154,6 +181,8 @@ class DBFB_Builder {
         return [
             'submit_text' => sanitize_text_field($settings['submit_text'] ?? 'Invia'),
             'success_message' => wp_kses_post($settings['success_message'] ?? ''),
+            'after_submit' => ($settings['after_submit'] ?? '') === 'redirect' ? 'redirect' : 'message',
+            'redirect_url' => esc_url_raw(trim((string) ($settings['redirect_url'] ?? '')), ['http', 'https']),
             'enable_captcha' => !empty($settings['enable_captcha']),
             'enable_honeypot' => !empty($settings['enable_honeypot']),
             'enable_gdpr' => !empty($settings['enable_gdpr']),

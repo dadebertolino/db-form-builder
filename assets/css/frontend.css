@@ -671,3 +671,8 @@
 .dbfb-form [hidden] {
     display: none !important;
 }
+
+/* 2.15.0: campo nascosto, mai visibile anche se il tema forza display */
+.dbfb-form .dbfb-hidden-field[hidden] {
+    display: none !important;
+}
