@@ -26,6 +26,7 @@
  *      logica path-traversal-safe del cron retention e dei delete UI.
  *    - DROP TABLE wp_dbfb_submissions (cancella TUTTE le submission)
  *    - DROP TABLE wp_dbfb_webhook_deliveries (2.13.0)
+ *    - DROP TABLE wp_dbfb_consents + option dbfb_consent_secret (2.16.0)
  *    - wp_delete_post() force=true su tutti i post di tipo dbfb_form
  *      (cancella i form definiti + i loro post meta automaticamente)
  *    - Pulizia della cartella wp-content/uploads/dbfb/ (file di sicurezza
@@ -143,6 +144,13 @@ if ($hard_delete) {
     // payload completo delle submission: va rimossa insieme a esse.
     $table_dlv = $wpdb->prefix . 'dbfb_webhook_deliveries';
     $wpdb->query("DROP TABLE IF EXISTS `{$table_dlv}`");
+
+    // 3.2c — DROP della tabella dei consensi facoltativi (2.16.0) e del suo
+    // secret. In modalità Soft entrambi restano: i link di revoca già
+    // inviati per email devono continuare a funzionare dopo una reinstallazione.
+    $table_consents = $wpdb->prefix . 'dbfb_consents';
+    $wpdb->query("DROP TABLE IF EXISTS `{$table_consents}`");
+    delete_option('dbfb_consent_secret');
 
     // 3.3 — Cancellazione di tutti i form definiti (CPT dbfb_form).
     // Usiamo wp_delete_post(force=true) per skippare il cestino e cancellare

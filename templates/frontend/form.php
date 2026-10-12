@@ -338,6 +338,35 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
         <div id="dbfb-gdpr-error-<?php echo $form_id; ?>" class="dbfb-field-error" role="alert" aria-live="polite"></div>
     </div>
     <?php endif; ?>
+
+    <?php
+    // 2.16.0: consensi facoltativi. Mai pre-spuntati, mai obbligatori
+    // (art. 7.4 GDPR): l'invio non dipende da queste caselle.
+    $optional_consents = DBFB_Consents::definitions($form_settings);
+    if ($optional_consents): ?>
+    <div class="dbfb-form-group dbfb-consents-group">
+        <fieldset>
+            <legend><?php esc_html_e('Consensi facoltativi', 'db-form-builder'); ?></legend>
+            <?php foreach ($optional_consents as $ci => $consent):
+                $consent_id = 'dbfb-consent-' . (int) $form_id . '-' . (int) $ci;
+                $consent_url = DBFB_Consents::privacy_url_for($consent, $form_settings);
+            ?>
+            <div class="dbfb-checkbox-item">
+                <input type="checkbox" id="<?php echo esc_attr($consent_id); ?>" name="dbfb_optional_consent[]" value="<?php echo esc_attr($consent['key']); ?>">
+                <label for="<?php echo esc_attr($consent_id); ?>">
+                    <?php echo esc_html($consent['text']); ?>
+                    <?php if ($consent_url): ?>
+                        <a href="<?php echo esc_url($consent_url); ?>" target="_blank" rel="noopener">
+                            <?php esc_html_e('Informativa', 'db-form-builder'); ?>
+                            <span class="screen-reader-text"><?php esc_html_e('(si apre in una nuova finestra)', 'db-form-builder'); ?></span>
+                        </a>
+                    <?php endif; ?>
+                </label>
+            </div>
+            <?php endforeach; ?>
+        </fieldset>
+    </div>
+    <?php endif; ?>
     
     <div class="dbfb-form-group">
         <input type="hidden" name="dbfb_hidden_fields" value="[]">

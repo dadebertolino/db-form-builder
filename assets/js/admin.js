@@ -238,6 +238,24 @@
                 this.updateFieldData($input.closest('.dbfb-field-item'));
             });
 
+            // 2.16.0: consensi facoltativi, aggiungi / rimuovi voce.
+            $(document).on('click', '#dbfb-add-consent-def', function(e) {
+                e.preventDefault();
+                const tpl = document.getElementById('dbfb-consent-def-template');
+                if (!tpl) return;
+                const $row = $(tpl.content.cloneNode(true)).find('.dbfb-consent-def').addBack('.dbfb-consent-def');
+                $('#dbfb-consent-defs').append($row);
+                $row.find('.dbfb-consent-text').trigger('focus');
+            });
+            $(document).on('click', '.dbfb-remove-consent-def', function(e) {
+                e.preventDefault();
+                $(this).closest('.dbfb-consent-def').remove();
+                $('#dbfb-add-consent-def').trigger('focus');
+            });
+            $(document).on('change', '.dbfb-consent-key', function() {
+                this.value = String(this.value).toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40);
+            });
+
             // 2.15.0: URL di redirect visibile solo con "Reindirizza".
             $(document).on('change', 'input[name="dbfb-after-submit"]', function() {
                 $('#dbfb-redirect-row').prop('hidden', this.value !== 'redirect');
@@ -905,6 +923,17 @@
                 enable_webhook: $('#dbfb-enable-webhook').is(':checked'),
                 webhook_url: $('#dbfb-webhook-url').val(),
                 webhook_secret: $('#dbfb-webhook-secret').val(),
+                webhook_on_revoke: $('#dbfb-webhook-on-revoke').is(':checked'),
+                // 2.16.0: consensi facoltativi
+                optional_consents: $('#dbfb-consent-defs .dbfb-consent-def').map(function() {
+                    const $d = $(this);
+                    return {
+                        key: $d.find('.dbfb-consent-key').val(),
+                        text: $d.find('.dbfb-consent-text').val(),
+                        purpose: $d.find('.dbfb-consent-purpose').val(),
+                        privacy_url: $d.find('.dbfb-consent-url').val()
+                    };
+                }).get(),
                 color_bg: $('#dbfb-color-bg').val(),
                 color_primary: $('#dbfb-color-primary').val(),
                 color_text: $('#dbfb-color-text').val()
@@ -1037,6 +1066,9 @@
                     ['{privacy_url}', dbfb.strings.ph_privacy_url]
                 ];
                 if ($list.data('context') === 'confirmation') fixed.push(['{documenti}', dbfb.strings.ph_documents]);
+                // 2.16.0: consensi facoltativi
+                if ($list.data('context') === 'confirmation') fixed.push(['{revoca_consenso}', dbfb.strings.ph_revoke]);
+                if ($list.data('context') === 'admin') fixed.push(['{consensi}', dbfb.strings.ph_consents]);
                 if ($list.data('context') === 'admin') fixed.push(['{ip}', dbfb.strings.ph_ip]);
 
                 const $fields = $('<div class="dbfb-placeholder-group"></div>');

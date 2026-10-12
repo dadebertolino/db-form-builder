@@ -19,6 +19,9 @@ class DBFB_Submissions {
             $form_id
         ));
 
+        // 2.16.0: consensi facoltativi per submission (una query sola).
+        $consents_by_submission = DBFB_Consents::for_submissions(wp_list_pluck((array) $submissions, 'id'));
+
         include DBFB_PLUGIN_DIR . 'templates/admin/submissions.php';
     }
 
@@ -105,6 +108,24 @@ class DBFB_Submissions {
         if ($include_ip_col) {
             $headers[] = $ip_header;
         }
+
+        // 2.16.0: una colonna per consenso facoltativo (chiavi registrate
+        // nelle risposte + quelle configurate ora). Nessuna colonna se il
+        // form non ha mai avuto consensi facoltativi.
+        $consents_by_submission = DBFB_Consents::for_submissions(wp_list_pluck((array) $submissions, 'id'));
+        $consent_keys = array();
+        foreach (DBFB_Consents::definitions(get_post_meta($form_id, '_dbfb_settings', true)) as $def) {
+            $consent_keys[] = $def['key'];
+        }
+        foreach ($consents_by_submission as $rows_for_sub) {
+            foreach ($rows_for_sub as $c) {
+                if (!in_array($c->consent_key, $consent_keys, true)) $consent_keys[] = $c->consent_key;
+            }
+        }
+        foreach ($consent_keys as $ck) {
+            /* translators: %s: chiave del consenso facoltativo */
+            $headers[] = sprintf(__('Consenso: %s', 'db-form-builder'), $ck);
+        }
         fputcsv($output, array_map(array(__CLASS__, 'csv_escape'), $headers), ';');
 
         foreach ($submissions as $submission) {
@@ -142,6 +163,20 @@ class DBFB_Submissions {
             if ($include_ip_col) {
                 $ip_info = DB_Form_Builder::format_submission_ip($submission, 'full');
                 $row[] = $ip_info['raw'];
+            }
+            // 2.16.0: Sì/No/Revocato + data.
+            $sub_consents = array();
+            foreach ($consents_by_submission[(int) $submission->id] ?? array() as $c) {
+                $sub_consents[$c->consent_key] = $c;
+            }
+            foreach ($consent_keys as $ck) {
+                if (!isset($sub_consents[$ck])) {
+                    $row[] = '';
+                    continue;
+                }
+                $c = $sub_consents[$ck];
+                $when = !empty($c->revoked_at) ? $c->revoked_at : $c->given_at;
+                $row[] = DBFB_Consents::status_label($c) . ' (' . date('d/m/Y H:i', strtotime($when)) . ')';
             }
             fputcsv($output, array_map(array(__CLASS__, 'csv_escape'), $row), ';');
         }

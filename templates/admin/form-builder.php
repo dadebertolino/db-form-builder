@@ -272,6 +272,56 @@
                 </div>
             </div>
             
+            <!-- Consensi facoltativi (2.16.0) -->
+            <div class="dbfb-settings-panel">
+                <h3><?php _e('Consensi facoltativi', 'db-form-builder'); ?></h3>
+                <div class="dbfb-settings-content">
+                    <p class="description"><?php _e('Consensi aggiuntivi separati da quello principale (es. marketing, newsletter). Nel form compaiono come caselle mai pre-spuntate e mai obbligatorie: l\'invio non dipende da queste (art. 7.4 GDPR). Per ogni invio si registra la scelta, anche se negativa, con testo, data e versione dell\'informativa.', 'db-form-builder'); ?></p>
+                    <div id="dbfb-consent-defs">
+                        <?php foreach ((array) $form_settings['optional_consents'] as $consent_def): ?>
+                            <div class="dbfb-consent-def" role="group" aria-label="<?php esc_attr_e('Consenso facoltativo', 'db-form-builder'); ?>">
+                                <div class="dbfb-consent-def-grid">
+                                    <label><?php _e('Testo mostrato', 'db-form-builder'); ?>
+                                        <input type="text" class="dbfb-consent-text" value="<?php echo esc_attr($consent_def['text']); ?>" placeholder="<?php esc_attr_e('Acconsento a ricevere offerte e novità via email', 'db-form-builder'); ?>">
+                                    </label>
+                                    <label><?php _e('Chiave', 'db-form-builder'); ?>
+                                        <input type="text" class="dbfb-consent-key" value="<?php echo esc_attr($consent_def['key']); ?>" maxlength="40" placeholder="marketing">
+                                    </label>
+                                    <label><?php _e('Finalità (per registro e CSV)', 'db-form-builder'); ?>
+                                        <input type="text" class="dbfb-consent-purpose" value="<?php echo esc_attr($consent_def['purpose'] ?? ''); ?>" maxlength="255" placeholder="<?php esc_attr_e('Invio di comunicazioni commerciali', 'db-form-builder'); ?>">
+                                    </label>
+                                    <label><?php _e('Link informativa (facoltativo)', 'db-form-builder'); ?>
+                                        <input type="url" class="dbfb-consent-url" value="<?php echo esc_attr($consent_def['privacy_url'] ?? ''); ?>" placeholder="https://">
+                                    </label>
+                                </div>
+                                <button type="button" class="button-link dbfb-remove-consent-def"><?php _e('Rimuovi', 'db-form-builder'); ?></button>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <template id="dbfb-consent-def-template">
+                        <div class="dbfb-consent-def" role="group" aria-label="<?php esc_attr_e('Consenso facoltativo', 'db-form-builder'); ?>">
+                                <div class="dbfb-consent-def-grid">
+                                    <label><?php _e('Testo mostrato', 'db-form-builder'); ?>
+                                        <input type="text" class="dbfb-consent-text" value="" placeholder="<?php esc_attr_e('Acconsento a ricevere offerte e novità via email', 'db-form-builder'); ?>">
+                                    </label>
+                                    <label><?php _e('Chiave', 'db-form-builder'); ?>
+                                        <input type="text" class="dbfb-consent-key" value="" maxlength="40" placeholder="marketing">
+                                    </label>
+                                    <label><?php _e('Finalità (per registro e CSV)', 'db-form-builder'); ?>
+                                        <input type="text" class="dbfb-consent-purpose" value="" maxlength="255" placeholder="<?php esc_attr_e('Invio di comunicazioni commerciali', 'db-form-builder'); ?>">
+                                    </label>
+                                    <label><?php _e('Link informativa (facoltativo)', 'db-form-builder'); ?>
+                                        <input type="url" class="dbfb-consent-url" value="" placeholder="https://">
+                                    </label>
+                                </div>
+                                <button type="button" class="button-link dbfb-remove-consent-def"><?php _e('Rimuovi', 'db-form-builder'); ?></button>
+                            </div>
+                    </template>
+                    <button type="button" class="button" id="dbfb-add-consent-def">+ <?php _e('Aggiungi consenso', 'db-form-builder'); ?></button>
+                    <p class="description"><?php _e('La chiave (minuscole, numeri e _) identifica il consenso in CSV, webhook e registro: se vuota viene ricavata dal testo. Non cambiarla dopo i primi invii. Nell\'email di conferma il segnaposto {revoca_consenso} inserisce il link per revocare; nella notifica admin {consensi} riepiloga le scelte.', 'db-form-builder'); ?></p>
+                </div>
+            </div>
+
             <!-- Aspetto (2.12.0) -->
             <div class="dbfb-settings-panel">
                 <h3><?php _e('Aspetto', 'db-form-builder'); ?></h3>
@@ -410,6 +460,13 @@
                         <p class="description">
                             <?php _e('Riceverà un POST JSON con: form_id, form_title, submitted_at, ip, fields (array con id, label, type, value) e raw_data. Compatibile con Zapier, Make, n8n, endpoint custom.', 'db-form-builder'); ?>
                         </p>
+
+                        <?php // 2.16.0 ?>
+                        <label style="margin-top:10px;display:block">
+                            <input type="checkbox" id="dbfb-webhook-on-revoke" <?php checked(!empty($form_settings['webhook_on_revoke'])); ?>>
+                            <?php _e('Invia anche le revoche dei consensi facoltativi', 'db-form-builder'); ?>
+                        </label>
+                        <p class="description"><?php _e('Un POST con event: "consent_revoked", submission_id e l\'elenco delle chiavi revocate, per aggiornare CRM e newsletter.', 'db-form-builder'); ?></p>
 
                         <p class="description" style="margin-top:14px;padding:8px 12px;background:#f0f6fc;border-left:3px solid #0073aa">
                             <strong><?php _e('Affidabilità (2.7.0+):', 'db-form-builder'); ?></strong>

@@ -27,6 +27,7 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
   - Trust dei proxy header solo via filter esplicito (anti-spoofing)
   - Dichiarazione automatica dei trattamenti al DB SEO Manager
 - **GDPR / Privacy** — Checkbox consenso obbligatorio con link alla Privacy Policy
+- **Consensi facoltativi e revoca (2.16.0+)** — Caselle aggiuntive per marketing, newsletter e simili, mai obbligatorie; prova del consenso per voce e revoca dal link nell'email
 - **Limite invii per IP** — Configurabile per form (max N invii in X minuti), funziona anche con IP hashato/non salvato
 - **Email personalizzabili** — Conferma utente + notifica admin (più destinatari) con placeholder dinamici, inseribili con un clic dall'editor (2.12.0+)
 - **Documenti nella conferma (2.14.0+)** — Uno o più file della Media Library (regolamento, brochure, modulo) inviati come link nell'email di conferma con il segnaposto `{documenti}`
@@ -58,6 +59,8 @@ Il cambio di modalità impatta solo le **nuove** submission. Quelle esistenti re
 `Form Builder → Impostazioni → Privacy → Retention submission`. Default 365 giorni. Un cron giornaliero (`dbfb_cleanup_submissions`) cancella tutto ciò che è più vecchio della soglia. Cap di sicurezza: 10000 righe per esecuzione (le rimanenti vengono cancellate il giorno dopo). Valore 0 = retention illimitata, sconsigliato per art. 5.1.e GDPR.
 
 Pulsante **"Pulisci ora"** per esecuzione manuale immediata. Action hook `dbfb_cleanup_submissions_done($deleted, $days)` per integrazioni (notifica admin, log esterno, ecc.).
+
+**Consensi facoltativi (2.16.0+):** quando la retention cancella una risposta, i suoi consensi facoltativi dati e non revocati **restano fino alla revoca** (prova del consenso per chi continua a usarlo, es. CRM o newsletter). Restano revocabili dal link nell'email e si trovano con le richieste DSAR. I consensi non dati seguono la risposta; un consenso revocato dopo la retention si conserva come prova della revoca per altri N giorni (la stessa soglia), poi viene cancellato.
 
 ### Right of erasure (art. 17)
 
@@ -105,9 +108,9 @@ Stesso pattern di [DB Cookie Manager](https://github.com/dadebertolino/db-cookie
 
 WordPress non chiede conferma prima di chiamare `uninstall.php`, quindi il comportamento si decide in anticipo via `Form Builder → Impostazioni → Privacy → Cancellazione dati alla disinstallazione`.
 
-**Soft (default, checkbox OFF):** alla disinstallazione vengono rimossi solo le option del plugin, i transient di rate limit, e lo scheduling del cron. Dalla 2.13.0 vengono tolti anche il cron delle webhook deliveries e i dispatch in coda. **Restano** la tabella delle submission, la tabella delle webhook deliveries, i form definiti (CPT `dbfb_form`) e gli allegati in `wp-content/uploads/dbfb/` (gli allegati non sono mai stati nella Media Library). Pensato per disinstallazioni temporanee — se reinstalli, ritrovi tutto.
+**Soft (default, checkbox OFF):** alla disinstallazione vengono rimossi solo le option del plugin, i transient di rate limit, e lo scheduling del cron. Dalla 2.13.0 vengono tolti anche il cron delle webhook deliveries e i dispatch in coda. **Restano** la tabella delle submission, la tabella delle webhook deliveries, i form definiti (CPT `dbfb_form`) e gli allegati in `wp-content/uploads/dbfb/` (gli allegati non sono mai stati nella Media Library). Pensato per disinstallazioni temporanee — se reinstalli, ritrovi tutto. Dalla 2.16.0 restano anche la tabella `wp_dbfb_consents` e l'option `dbfb_consent_secret`: i link di revoca già inviati per email continuano a funzionare dopo una reinstallazione.
 
-**Hard (checkbox ON):** alla disinstallazione viene fatto `DROP TABLE` di `wp_dbfb_submissions` e `wp_dbfb_webhook_deliveries` (2.13.0+), vengono cancellati tutti i post di tipo `dbfb_form` (con i relativi post meta), tutti i file allegati delle submission dal disco, le sottocartelle vuote in `wp-content/uploads/dbfb/`, i file di sicurezza (`.htaccess`, `index.php`) e le option del plugin. Operazione **irreversibile**. Quando attivi il checkbox, l'UI mostra un alert giallo che riepiloga cosa accadrà.
+**Hard (checkbox ON):** alla disinstallazione viene fatto `DROP TABLE` di `wp_dbfb_submissions`, `wp_dbfb_webhook_deliveries` (2.13.0+) e `wp_dbfb_consents` (2.16.0+, insieme all'option `dbfb_consent_secret`), vengono cancellati tutti i post di tipo `dbfb_form` (con i relativi post meta), tutti i file allegati delle submission dal disco, le sottocartelle vuote in `wp-content/uploads/dbfb/`, i file di sicurezza (`.htaccess`, `index.php`) e le option del plugin. Operazione **irreversibile**. Quando attivi il checkbox, l'UI mostra un alert giallo che riepiloga cosa accadrà.
 
 La disinstallazione funziona anche da WP-CLI (`wp plugin uninstall db-form-builder`): dalla 2.13.0 `uninstall.php` non richiede più un utente corrente.
 
@@ -148,7 +151,7 @@ Quando **DB SEO Manager Hard Privacy** è attivo, reCAPTCHA è disattivato in mo
 
 ### Dichiarazione trattamenti al registro privacy unificato
 
-Quando **DB Privacy Hub 1.0.0+** è installato, il Form Builder dichiara automaticamente fino a 4 trattamenti nel pannello "Privacy → Registro trattamenti" e li propaga nella Privacy Policy generata. Per retrocompatibilità, lo stesso aggancio funziona anche con il vecchio **DB SEO Manager 1.2.x** (dalla 1.3.0 il SEO Manager non gestisce più il registro privacy: la responsabilità è migrata nell'Hub).
+Quando **DB Privacy Hub 1.0.0+** è installato, il Form Builder dichiara automaticamente fino a 5 trattamenti nel pannello "Privacy → Registro trattamenti" e li propaga nella Privacy Policy generata. Per retrocompatibilità, lo stesso aggancio funziona anche con il vecchio **DB SEO Manager 1.2.x** (dalla 1.3.0 il SEO Manager non gestisce più il registro privacy: la responsabilità è migrata nell'Hub).
 
 | ID | Quando appare |
 |---|---|
@@ -156,6 +159,7 @@ Quando **DB Privacy Hub 1.0.0+** è installato, il Form Builder dichiara automat
 | `dbfb_email_notifications` | almeno 1 form ha notifica admin o conferma utente |
 | `dbfb_recaptcha` | reCAPTCHA configurato globalmente E almeno 1 form lo usa |
 | `dbfb_webhooks` | almeno 1 form ha webhook attivo (con elenco host destinatari deduplicato) |
+| `dbfb_marketing` | almeno 1 form pubblicato ha consensi facoltativi (2.16.0+): base giuridica 6.1.a, finalità configurate, conservazione fino alla revoca, host webhook dei form con consensi |
 
 Le voci sono **dinamiche**: riflettono in tempo reale `ip_storage_mode`, `submissions_retention_days`, host webhook configurati. L'admin può copiare i testi nelle proprie informative privacy.
 
@@ -168,6 +172,12 @@ Senza l'Hub, il Form Builder si registra direttamente sui filter core di WordPre
 ### Registro consensi unificato (sorgente `dbfb_form_consents`)
 
 Dalla 2.11.0 ogni invio con checkbox GDPR attiva salva la prova del consenso (flag, testo mostrato, timestamp, URL informativa, ID versione della Privacy Policy dell'Hub). Tramite il filter `dbph_consents_register` il Form Builder registra la sorgente **`dbfb_form_consents`** nel "Registro consensi" del Privacy Hub, con callback di conteggio, consultazione ed export CSV (filtri per data e interessato; dalla 2.13.0 l'export rispetta il limite richiesto dall'Hub, fino a 50.000 righe). Solo le submission con `gdpr_consent_given = 1` compaiono nel registro; l'email dell'interessato è mascherata.
+
+### Registro consensi: sorgente `dbfb_marketing_consents` (2.16.0+)
+
+I consensi facoltativi compaiono nel "Registro consensi" del Privacy Hub come sorgente separata **`dbfb_marketing_consents`**: solo i consensi dati (`given = 1`), email mascherata, stato attivo/revocato in `extra` (con data e origine della revoca), filtri per data, interessato (con l'email completa la ricerca avviene sull'hash) e `consent_key`. La versione della Privacy Policy è quella in vigore al momento del consenso (`DBPH_Policy_Archive::get_current_version_id()`, `0` senza Hub).
+
+Le richieste DSAR includono i consensi facoltativi: l'export li riporta in un gruppo "Consensi facoltativi" (chiave, testo, scelta, data, finalità, informativa, versione della policy, revoca), la cancellazione li elimina, compresi quelli rimasti dopo la retention della risposta.
 
 ### Marker `DBFB_DSAR_AVAILABLE`
 
@@ -188,8 +198,12 @@ Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)
 | `dbfb_webhook_file_link_ttl` | `604800` | Validità in secondi dei link firmati nei webhook (2.13.0+, default 7 giorni) |
 | `dbfb_prefill_allowed_types` | testo, area testo, numero, data, URL, menu, scelta singola, checkbox | Tipi di campo precompilabili da URL (2.15.0+; file e layout mai, il campo nascosto sempre) |
 | `dbfb_redirect_allow_external` | `false` | Consente il redirect dopo l'invio verso domini esterni; riceve `$url` e `$form_id` (2.15.0+) |
+| `dbfb_revoke_rate_limit` | `20` | Richieste massime per IP alla pagina di revoca dei consensi nella finestra (2.16.0+, `0` = disattivato) |
+| `dbfb_revoke_rate_window` | `600` | Durata in secondi della finestra del limite precedente (2.16.0+) |
 
-Action: `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
+Action:
+- `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
+- `dbfb_consent_revoked($consent_id, $consent_key, $submission_id)` — un consenso facoltativo è stato revocato, dal link email o da admin (2.16.0+). Per sincronizzare CRM e newsletter.
 
 ## Installazione
 
@@ -209,6 +223,35 @@ Attivabile per form. Campo nascosto + verifica tempo di compilazione. Nessun imp
 
 ### GDPR
 Checkbox obbligatorio configurabile con testo e link alla Privacy Policy.
+
+### Consensi facoltativi e revoca (2.16.0+)
+Nel pannello "Consensi facoltativi" del form si aggiungono fino a 10 consensi separati da quello principale, ognuno con:
+- **testo mostrato** nel form;
+- **chiave** (es. `marketing`, `newsletter`): minuscole, numeri e `_`, ricavata dal testo se vuota. Identifica il consenso in CSV, webhook e registro: non cambiarla dopo i primi invii;
+- **finalità** breve, usata nel registro trattamenti e nel CSV;
+- **link all'informativa** (se vuoto: quello del form, poi quello globale di WordPress).
+
+Nel form le caselle stanno in un gruppo "Consensi facoltativi" (fieldset e legend), **mai pre-spuntate e mai obbligatorie**: l'invio non dipende da queste (art. 7.4 GDPR). Il consenso GDPR principale resta separato e invariato.
+
+**Prova del consenso.** Per ogni invio si registra in `wp_dbfb_consents` una riga per voce, **anche per i consensi non dati**: chiave, scelta, testo esatto mostrato, finalità, informativa, versione della Privacy Policy dell'Hub, data. L'interessato è collegato con un hash (HMAC con secret dedicato) e una forma mascherata dell'email: l'email in chiaro non viene mai salvata in questa tabella.
+
+**Revoca (art. 7.3).**
+- **Dal link nell'email:** il segnaposto `{revoca_consenso}` nell'email di conferma inserisce un link firmato senza scadenza, valido per tutti i consensi facoltativi dati in quell'invio. Se il segnaposto manca dal messaggio e almeno un consenso è stato dato, il link viene aggiunto in fondo. In quel caso la conferma parte in HTML con link cliccabile e versione testo alternativa. Il link apre una pagina di conferma con una casella per ogni consenso: la revoca avviene solo premendo il pulsante (mai all'apertura del link, per evitare revoche da anteprime e antivirus dei client email). La pagina è protetta da firma HMAC, controllo di origine sull'invio e limite di richieste per IP (filter `dbfb_revoke_rate_limit` / `dbfb_revoke_rate_window`). Se l'email di conferma è disattivata il link non arriva: in quel caso la revoca va gestita da admin.
+- **Da admin:** nel dettaglio della risposta, blocco "Consensi facoltativi" con il pulsante "Revoca".
+
+Ogni revoca registra data e origine (`link` o `admin`), emette l'action `dbfb_consent_revoked` e, se attivo "Invia anche le revoche dei consensi facoltativi" nel pannello Webhook, mette in coda un webhook con lo stesso sistema asincrono e firma HMAC:
+
+```json
+{
+  "event": "consent_revoked",
+  "form_id": 12,
+  "form_title": "Prenotazione",
+  "submission_id": 345,
+  "consents": [{ "key": "marketing", "revoked_at": "2026-10-12T20:15:22+00:00", "source": "link" }]
+}
+```
+
+**Dove compaiono:** CSV (una colonna per chiave: Sì / No / Revocato con data), webhook dell'invio (chiave `consents: [{ key, given, given_at, policy_version }]`, le altre chiavi del payload non cambiano), notifica admin (segnaposto `{consensi}`, es. `marketing: Sì; newsletter: No`), dettaglio della risposta, DSAR e Registro consensi del Privacy Hub.
 
 ### Limite invii per IP
 Massimo N invii in X minuti dallo stesso IP, configurabile per form.
@@ -363,6 +406,42 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.16.0 — Consensi facoltativi per voce + revoca (art. 7.3)
+
+Consensi aggiuntivi per form (marketing, newsletter, ...), separati dal consenso GDPR principale, con prova per voce, revoca dal link nell'email e integrazione completa con il DB Privacy Hub.
+
+**Consensi facoltativi nel form:**
+- Nuovo pannello "Consensi facoltativi" nell'editor: fino a 10 voci con chiave, testo, finalità e link all'informativa (fallback a quello del form, poi a quello globale). Impostazione `optional_consents`.
+- Nel frontend: fieldset "Consensi facoltativi", caselle mai pre-spuntate e mai obbligatorie (art. 7.4); inviate a parte (`consents`), il server accetta solo le chiavi configurate.
+
+**Prova del consenso per voce — nuova tabella `wp_dbfb_consents`:**
+- `submission_id`, `form_id`, `consent_key`, `given` (registrato anche `0`), `consent_text` (testo esatto mostrato), `purpose`, `privacy_url`, `policy_version` (ID dello snapshot del Privacy Hub, `0` se assente), `subject_hash` (HMAC dell'email con secret dedicato `dbfb_consent_secret`), `subject_masked`, `given_at`, `revoked_at`, `revoke_source`. Indici su `submission_id`, `consent_key`, `policy_version`, `subject_hash`.
+- Mai l'email in chiaro: l'hash serve a ritrovare i consensi di un interessato (DSAR, filtro del registro) anche dopo la retention della risposta.
+
+**Migrazione automatica:**
+- Schema v5 → v6: creazione della tabella, idempotente (`SHOW TABLES` prima di creare), anche in `admin_init` per gli aggiornamenti senza riattivazione.
+
+**Revoca (art. 7.3):**
+- Segnaposto `{revoca_consenso}` nell'email di conferma: link firmato HMAC senza scadenza (`admin-post.php?action=dbfb_revoke`), per tutti i consensi dell'invio. Aggiunto in fondo se il segnaposto manca e c'è almeno un consenso dato. La conferma con link diventa HTML con alternativa testo, come per i documenti (2.14.1).
+- Pagina di conferma su GET, revoca solo su POST. Endpoint anonimo secondo la regola della suite: firma HMAC, controllo `Origin`/`Referer`, rate limit per IP con hash salato. Nessun nonce.
+- Revoca manuale dal dettaglio della risposta (`revoke_source = admin`). Action `dbfb_consent_revoked($consent_id, $consent_key, $submission_id)`. Webhook di revoca opzionale per form (`webhook_on_revoke`, `event: consent_revoked`).
+
+**Conservazione e cancellazione:**
+- Retention: i consensi dati e non revocati restano fino alla revoca; consensi non dati e revocati seguono la risposta; revoche successive alla retention conservate per la stessa durata della retention, poi cancellate.
+- Cascata su eliminazione singola, multipla e totale delle risposte, eliminazione del form, DSAR erase (anche per hash, per i consensi rimasti dopo la retention), disinstallazione Hard (`DROP TABLE`). In disinstallazione Soft tabella e secret restano, così i link di revoca già inviati continuano a funzionare.
+
+**Integrazione DB Privacy Hub:**
+- Registro consensi: nuova sorgente `dbfb_marketing_consents` (solo `given = 1`, email mascherata, stato attivo/revocato, filtri per data, interessato e chiave).
+- Registro trattamenti: nuova dichiarazione dinamica `dbfb_marketing` (anche sul filter legacy `dbseo_processing_register`), solo se almeno un form pubblicato ha consensi facoltativi: base giuridica 6.1.a, finalità configurate, conservazione fino alla revoca, host dei webhook.
+- DSAR: l'export include i consensi (gruppo "Consensi facoltativi"); l'erase li cancella.
+- Blocco "Privacy capabilities" del file principale aggiornato.
+
+**Propagazione:** CSV (una colonna per chiave: Sì/No/Revocato con data), webhook dell'invio (`consents: [{ key, given, given_at, policy_version }]`), segnaposto `{consensi}` nella notifica admin, blocco "Consensi facoltativi" nel dettaglio della risposta.
+
+**Comportamento standalone preservato:** senza Privacy Hub i consensi vengono salvati con `policy_version = 0`; con l'Hub sono collegati allo snapshot esatto della policy.
+
+**Nessun breaking change.** I form senza consensi facoltativi non cambiano: nessuna colonna nuova nel CSV, nessuna chiave nuova nel webhook, conferma invariata.
 
 ### 2.15.0 — Precompilazione da URL, campo nascosto, redirect ed eventi
 
@@ -656,6 +735,7 @@ db-form-builder/
 │   ├── class-submissions.php        # Risposte, CSV export, download protetto allegati
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
+│   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)
 │   ├── class-settings.php           # Impostazioni globali, test reCAPTCHA/email, cleanup AJAX
 │   ├── class-appearance.php         # Colori del frontend come variabili CSS (2.12.0+)
 │   ├── class-gdpr-compliance-notice.php # Avviso form senza consenso (2.10.0+)

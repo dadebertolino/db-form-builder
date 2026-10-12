@@ -45,6 +45,10 @@ class DBFB_Email {
             '{sito}' => get_bloginfo('name'),
             '{privacy_url}' => $privacy_url,
             '{documenti}' => self::documents_text($settings),
+            // 2.16.0: valorizzati da DBFB_Submit dopo la registrazione dei
+            // consensi; vuoti qui, così non restano mai letterali.
+            '{consensi}' => '',
+            '{revoca_consenso}' => '',
         ];
 
         $riepilogo = '';
@@ -141,16 +145,21 @@ class DBFB_Email {
     }
 
     /**
-     * Testo della conferma con i documenti garantiti (2.14.0).
+     * Testo della conferma con documenti e link di revoca garantiti.
      *
-     * Se l'admin ha scelto dei documenti ma non ha messo {documenti} nel
-     * messaggio, l'elenco viene aggiunto in fondo: altrimenti i file scelti
-     * non arriverebbero mai, senza che nessuno se ne accorga.
+     * 2.14.0: se l'admin ha scelto dei documenti ma non ha messo {documenti}
+     * nel messaggio, l'elenco viene aggiunto in fondo.
+     * 2.16.0: lo stesso per il link di revoca quando è stato dato almeno un
+     * consenso facoltativo: revocare deve essere facile quanto acconsentire
+     * (art. 7.3 GDPR), quindi il link arriva anche se il segnaposto manca.
      */
-    private static function confirmation_template($settings) {
+    private static function confirmation_template($settings, $placeholders = []) {
         $message = (string) ($settings['confirmation_message'] ?? '');
         if (strpos($message, '{documenti}') === false && self::documents($settings)) {
             $message = rtrim($message) . "\n\n" . __('Documenti:', 'db-form-builder') . "\n{documenti}";
+        }
+        if (strpos($message, '{revoca_consenso}') === false && ($placeholders['{revoca_consenso}'] ?? '') !== '') {
+            $message = rtrim($message) . "\n\n" . __('Per revocare i consensi facoltativi:', 'db-form-builder') . "\n{revoca_consenso}";
         }
         return $message;
     }
@@ -211,39 +220,52 @@ class DBFB_Email {
     }
 
     /**
-     * Oggetto, testo e (se ci sono documenti) HTML della conferma (2.14.1).
+     * Oggetto, testo e (se ci sono link) HTML della conferma (2.14.1).
      *
      * In testo semplice un URL è cliccabile solo se il client di posta lo
-     * riconosce da solo, e molti non lo fanno. Con documenti da inviare la
-     * conferma diventa quindi HTML con link veri, più la versione testo come
-     * alternativa. Il testo dell'admin e i valori dell'utente sono passati da
-     * esc_html: solo i link dei documenti diventano <a>, mai gli URL scritti
-     * nei campi del form (niente link cliccabili di terzi inviati dal sito).
+     * riconosce da solo, e molti non lo fanno. Con documenti da inviare o
+     * link di revoca (2.16.0) la conferma diventa quindi HTML con link veri,
+     * più la versione testo come alternativa. Il testo dell'admin e i valori
+     * dell'utente sono passati da esc_html: diventano <a> solo i link
+     * generati dal plugin, mai gli URL scritti nei campi del form (niente
+     * link cliccabili di terzi inviati dal sito).
      *
-     * @return array [subject, plain, html] — html '' se non ci sono documenti.
+     * @return array [subject, plain, html] — html '' se non ci sono link.
      */
     private static function build_confirmation($settings, $placeholders) {
-        $template = self::confirmation_template($settings);
+        $template = self::confirmation_template($settings, $placeholders);
         list($subject, $plain) = self::build_email($settings['confirmation_subject'] ?? '', $template, $placeholders);
 
+        // Segnaposto => [HTML, è un blocco]. I blocchi (liste) assorbono
+        // l'a capo che li segue, che sarebbe una riga vuota sotto la lista.
+        $links = [];
         $docs = self::documents($settings);
-        if (!$docs) return [$subject, $plain, ''];
-
-        // Segnaposto temporaneo casuale (solo alfanumerici, esc_html non lo
-        // tocca): un valore dell'utente non può indovinarlo.
-        $token = 'dbfbdocs' . wp_generate_password(20, false);
-        list(, $marked) = self::build_email('', $template, array_merge($placeholders, ['{documenti}' => $token]));
-
-        $items = '';
-        foreach ($docs as $doc) {
-            $items .= '<li><a href="' . esc_url($doc['url']) . '">' . esc_html($doc['title']) . '</a></li>';
+        if ($docs) {
+            $items = '';
+            foreach ($docs as $doc) {
+                $items .= '<li><a href="' . esc_url($doc['url']) . '">' . esc_html($doc['title']) . '</a></li>';
+            }
+            $links['{documenti}'] = ['<ul style="margin:0;padding-left:20px;">' . $items . '</ul>', true];
         }
-        // Il <br> dopo il segnaposto andrebbe sotto la lista come riga vuota.
-        $body = str_replace(
-            [$token . '<br>', $token],
-            '<ul style="margin:0;padding-left:20px;">' . $items . '</ul>',
-            nl2br(esc_html($marked), false)
-        );
+        $revoke = (string) ($placeholders['{revoca_consenso}'] ?? '');
+        if ($revoke !== '') {
+            $links['{revoca_consenso}'] = ['<a href="' . esc_url($revoke) . '">' . esc_html__('Revoca i consensi facoltativi', 'db-form-builder') . '</a>', false];
+        }
+        if (!$links) return [$subject, $plain, ''];
+
+        // Segnaposto temporanei casuali (solo alfanumerici, esc_html non li
+        // tocca): un valore dell'utente non può indovinarli.
+        $tokens = [];
+        foreach (array_keys($links) as $key) {
+            $tokens[$key] = 'dbfblink' . wp_generate_password(20, false);
+        }
+        list(, $marked) = self::build_email('', $template, array_merge($placeholders, $tokens));
+
+        $body = nl2br(esc_html($marked), false);
+        foreach ($links as $key => $link) {
+            list($html_link, $is_block) = $link;
+            $body = str_replace($is_block ? [$tokens[$key] . '<br>', $tokens[$key]] : $tokens[$key], $html_link, $body);
+        }
 
         $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'
             . '<body style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1d2327;">'
@@ -356,6 +378,16 @@ class DBFB_Email {
             $form_settings,
             $email_type === 'confirmation' ? 'user' : 'admin'
         );
+        // 2.16.0: con consensi facoltativi, valori di esempio come se fossero
+        // stati dati tutti. Il link di revoca di prova apre una pagina che
+        // spiega che è un esempio.
+        $consent_defs = DBFB_Consents::definitions($form_settings);
+        if ($consent_defs) {
+            $placeholders['{consensi}'] = implode('; ', array_map(function ($def) {
+                return $def['key'] . ': ' . __('Sì', 'db-form-builder');
+            }, $consent_defs));
+            $placeholders['{revoca_consenso}'] = DBFB_Consents::revoke_url(0);
+        }
         if ($email_type === 'confirmation') {
             list($subject, $plain, $html) = self::build_confirmation($form_settings, $placeholders);
             $sent = self::send_confirmation_mail($test_email, '[TEST] ' . $subject, $plain, $html);
