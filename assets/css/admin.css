@@ -583,3 +583,32 @@
 .dbfb-placeholder-chip.button.button-small {
     min-height: 28px;
 }
+
+/* =========================================================
+   Documenti nella conferma (2.14.0)
+   ========================================================= */
+.dbfb-documents-list {
+    margin: 0 0 8px;
+}
+
+.dbfb-document-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 4px;
+    padding: 6px 8px;
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+}
+
+.dbfb-document-item a {
+    flex: 1;
+    overflow-wrap: anywhere;
+}
+
+.dbfb-remove-document {
+    color: #b32d2e;
+    min-width: 24px;
+    min-height: 24px;
+}

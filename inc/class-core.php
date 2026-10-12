@@ -677,6 +677,12 @@ class DB_Form_Builder {
                 'ph_date' => __('Data invio', 'db-form-builder'),
                 'ph_privacy_url' => __('Link informativa privacy', 'db-form-builder'),
                 'ph_ip' => __('IP visitatore', 'db-form-builder'),
+                // 2.14.0: documenti nella conferma
+                'ph_documents' => __('Documenti', 'db-form-builder'),
+                'docs_title' => __('Seleziona i documenti da inviare', 'db-form-builder'),
+                'docs_button' => __('Aggiungi alla conferma', 'db-form-builder'),
+                /* translators: %s: titolo del documento */
+                'docs_remove' => __('Rimuovi %s', 'db-form-builder'),
             ]
         ]);
     }

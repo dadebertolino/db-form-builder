@@ -27,6 +27,7 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
 - **GDPR / Privacy** — Checkbox consenso obbligatorio con link alla Privacy Policy
 - **Limite invii per IP** — Configurabile per form (max N invii in X minuti), funziona anche con IP hashato/non salvato
 - **Email personalizzabili** — Conferma utente + notifica admin (più destinatari) con placeholder dinamici, inseribili con un clic dall'editor (2.12.0+)
+- **Documenti nella conferma (2.14.0+)** — Uno o più file della Media Library (regolamento, brochure, modulo) inviati come link nell'email di conferma con il segnaposto `{documenti}`
 - **Colori personalizzabili (2.12.0+)** — Sfondo, pulsanti e testo del form, globali o per singolo form, con contrasto WCAG AA garantito sui pulsanti e avviso sul testo
 - **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, allegati scaricabili solo dall'admin (2.13.0+)
 - **Aggiornamenti automatici** — da GitHub Releases, direttamente in Plugin → Aggiornamenti (2.13.0+)
@@ -274,6 +275,7 @@ Sotto ogni email, nell'editor del form, c'è l'elenco dei segnaposto disponibili
 - `{riepilogo_dati}` — Tutti i campi compilati
 - `{ip}`, `{data}`, `{sito}`
 - `{privacy_url}` — URL informativa privacy del form (con fallback a quella globale WP) — **2.8.0+**
+- `{documenti}` — Link ai documenti scelti in "Documenti da inviare" (solo email di conferma; se manca dal messaggio l'elenco viene aggiunto in fondo) — **2.14.0+**
 
 I valori inseriti dagli utenti non vengono mai interpretati come segnaposto: chi scrive `{ip}` in un campo lo ritrova letterale nell'email (2.11.2+).
 
@@ -321,6 +323,10 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.14.0 — Documenti nell'email di conferma
+
+- **Documenti da inviare:** nel pannello "Email Conferma Utente" si scelgono uno o più file dalla Media Library (massimo 20, salvati come ID in `confirmation_documents`). Nell'email arrivano come link, uno per riga (`- Titolo: URL`), tramite il nuovo segnaposto `{documenti}`, cliccabile nell'editor. Se il segnaposto manca dal messaggio l'elenco viene aggiunto in fondo, così i documenti scelti arrivano sempre. Link e non file allegato: email leggera, niente limiti di dimensione SMTP, documento sempre aggiornato. I file cancellati dalla Media Library vengono saltati. L'interfaccia avvisa che i file della Media Library sono pubblici e non vanno usati per documenti riservati. Funziona anche con "Invia Test".
 
 ### 2.13.0 — Invii con cache di pagina, reCAPTCHA cache-safe, allegati protetti
 

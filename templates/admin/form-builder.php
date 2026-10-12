@@ -285,7 +285,33 @@
                         <p class="description"><?php _e('Clicca un segnaposto per inserirlo nell\'oggetto o nel messaggio (dove si trova il cursore).', 'db-form-builder'); ?></p>
                         <div class="dbfb-placeholder-list" data-context="confirmation" data-target="dbfb-confirmation-message" data-subject="dbfb-confirmation-subject"></div>
                     </div>
-                    
+
+                    <!-- 2.14.0: documenti della Media Library linkati nella conferma -->
+                    <div class="dbfb-settings-row">
+                        <label id="dbfb-confirmation-documents-label"><?php _e('Documenti da inviare', 'db-form-builder'); ?></label>
+                        <ul id="dbfb-confirmation-documents" class="dbfb-documents-list" aria-labelledby="dbfb-confirmation-documents-label">
+                            <?php foreach ((array) $form_settings['confirmation_documents'] as $doc_id):
+                                $doc_url = wp_get_attachment_url($doc_id);
+                                if (!$doc_url) continue;
+                                $doc_title = get_post_field('post_title', $doc_id);
+                                if ($doc_title === '') $doc_title = wp_basename($doc_url);
+                            ?>
+                            <li class="dbfb-document-item" data-id="<?php echo esc_attr($doc_id); ?>">
+                                <span class="dashicons dashicons-media-default" aria-hidden="true"></span>
+                                <a href="<?php echo esc_url($doc_url); ?>" target="_blank" rel="noopener"><?php echo esc_html($doc_title); ?></a>
+                                <button type="button" class="button-link dbfb-remove-document" aria-label="<?php echo esc_attr(sprintf(__('Rimuovi %s', 'db-form-builder'), $doc_title)); ?>">
+                                    <span class="dashicons dashicons-no-alt" aria-hidden="true"></span>
+                                </button>
+                            </li>
+                            <?php endforeach; ?>
+                        </ul>
+                        <button type="button" class="button" id="dbfb-add-documents">
+                            <span class="dashicons dashicons-paperclip" aria-hidden="true" style="vertical-align: text-bottom;"></span>
+                            <?php _e('Aggiungi documenti', 'db-form-builder'); ?>
+                        </button>
+                        <p class="description"><?php _e('File della Media Library (es. regolamento, brochure, modulo da compilare) inviati come link nel segnaposto {documenti}. Se il segnaposto non è nel messaggio, l\'elenco viene aggiunto in fondo. Attenzione: i file della Media Library sono pubblici, chiunque abbia il link può scaricarli. Non usare per documenti riservati.', 'db-form-builder'); ?></p>
+                    </div>
+
                     <?php if ($form_id): ?>
                     <div class="dbfb-settings-row dbfb-test-email-row">
                         <label><?php _e('Test Email', 'db-form-builder'); ?></label>

@@ -231,6 +231,43 @@
                 frame.open();
             });
             
+            // Documenti della conferma (2.14.0): selezione multipla dalla
+            // Media Library, salvati come ID e inviati come link.
+            $(document).on('click', '#dbfb-add-documents', (e) => {
+                e.preventDefault();
+                const $list = $('#dbfb-confirmation-documents');
+                const frame = wp.media({
+                    title: dbfb.strings.docs_title,
+                    button: { text: dbfb.strings.docs_button },
+                    multiple: true
+                });
+
+                frame.on('select', () => {
+                    frame.state().get('selection').each((model) => {
+                        const doc = model.toJSON();
+                        if ($list.find('.dbfb-document-item[data-id="' + doc.id + '"]').length) return;
+                        const title = doc.title || doc.filename;
+                        const $item = $('<li class="dbfb-document-item"></li>').attr('data-id', doc.id);
+                        $item.append('<span class="dashicons dashicons-media-default" aria-hidden="true"></span> ');
+                        $item.append($('<a target="_blank" rel="noopener"></a>').attr('href', doc.url).text(title));
+                        $item.append(
+                            $('<button type="button" class="button-link dbfb-remove-document"></button>')
+                                .attr('aria-label', dbfb.strings.docs_remove.replace('%s', title))
+                                .append('<span class="dashicons dashicons-no-alt" aria-hidden="true"></span>')
+                        );
+                        $list.append($item);
+                    });
+                });
+
+                frame.open();
+            });
+
+            $(document).on('click', '.dbfb-remove-document', function(e) {
+                e.preventDefault();
+                $(this).closest('.dbfb-document-item').remove();
+                $('#dbfb-add-documents').trigger('focus');
+            });
+
             // Toggle GDPR options (2.10.0): mostra le opzioni GDPR quando attivo,
             // oppure il blocco "consenso intenzionalmente disabilitato" quando spento.
             $('#dbfb-enable-gdpr').on('change', function() {
@@ -785,6 +822,9 @@
                 send_confirmation: $('#dbfb-send-confirmation').is(':checked'),
                 confirmation_subject: $('#dbfb-confirmation-subject').val(),
                 confirmation_message: $('#dbfb-confirmation-message').val(),
+                confirmation_documents: $('#dbfb-confirmation-documents .dbfb-document-item').map(function() {
+                    return parseInt($(this).data('id'), 10);
+                }).get(),
                 send_admin_notification: $('#dbfb-send-admin-notification').is(':checked'),
                 admin_email: $('#dbfb-admin-email').val(),
                 admin_subject: $('#dbfb-admin-subject').val(),
@@ -923,6 +963,7 @@
                     ['{data}', dbfb.strings.ph_date],
                     ['{privacy_url}', dbfb.strings.ph_privacy_url]
                 ];
+                if ($list.data('context') === 'confirmation') fixed.push(['{documenti}', dbfb.strings.ph_documents]);
                 if ($list.data('context') === 'admin') fixed.push(['{ip}', dbfb.strings.ph_ip]);
 
                 const $fields = $('<div class="dbfb-placeholder-group"></div>');

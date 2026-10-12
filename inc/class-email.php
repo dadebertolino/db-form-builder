@@ -44,6 +44,7 @@ class DBFB_Email {
             '{data}' => current_time('d/m/Y H:i:s'),
             '{sito}' => get_bloginfo('name'),
             '{privacy_url}' => $privacy_url,
+            '{documenti}' => self::documents_text($settings),
         ];
 
         $riepilogo = '';
@@ -95,6 +96,49 @@ class DBFB_Email {
 
         $placeholders['{riepilogo_dati}'] = trim($riepilogo);
         return $placeholders;
+    }
+
+    /**
+     * Elenco dei documenti della conferma, uno per riga (2.14.0).
+     *
+     * I file sono allegati della Media Library scelti dall'admin, quindi
+     * pubblici per natura: nell'email va il link, non il file. Così l'email
+     * resta leggera (niente limiti di dimensione del server SMTP, meno
+     * rischio spam) e il documento linkato è sempre la versione corrente.
+     * Gli allegati cancellati nel frattempo vengono saltati.
+     *
+     * @param array $settings Impostazioni del form.
+     * @return string "- Titolo: URL" per riga, '' se non ci sono documenti.
+     */
+    public static function documents_text($settings) {
+        $ids = $settings['confirmation_documents'] ?? [];
+        if (!is_array($ids) || empty($ids)) return '';
+
+        $lines = [];
+        foreach ($ids as $id) {
+            $id  = absint($id);
+            $url = $id ? wp_get_attachment_url($id) : false;
+            if (!$url) continue;
+            $title = trim(html_entity_decode(wp_strip_all_tags((string) get_post_field('post_title', $id)), ENT_QUOTES, 'UTF-8'));
+            if ($title === '') $title = wp_basename($url);
+            $lines[] = '- ' . $title . ': ' . $url;
+        }
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Testo della conferma con i documenti garantiti (2.14.0).
+     *
+     * Se l'admin ha scelto dei documenti ma non ha messo {documenti} nel
+     * messaggio, l'elenco viene aggiunto in fondo: altrimenti i file scelti
+     * non arriverebbero mai, senza che nessuno se ne accorga.
+     */
+    private static function confirmation_template($settings) {
+        $message = (string) ($settings['confirmation_message'] ?? '');
+        if (strpos($message, '{documenti}') === false && self::documents_text($settings) !== '') {
+            $message = rtrim($message) . "\n\n" . __('Documenti:', 'db-form-builder') . "\n{documenti}";
+        }
+        return $message;
     }
 
     /**
@@ -155,7 +199,7 @@ class DBFB_Email {
     public static function send_confirmation($to, $settings, $placeholders) {
         list($subject, $message) = self::build_email(
             $settings['confirmation_subject'] ?? '',
-            $settings['confirmation_message'] ?? '',
+            self::confirmation_template($settings),
             $placeholders
         );
         return wp_mail($to, $subject, $message, self::get_headers());
@@ -242,7 +286,7 @@ class DBFB_Email {
         if ($email_type === 'confirmation') {
             list($subject, $message) = self::build_email(
                 $form_settings['confirmation_subject'] ?? '',
-                $form_settings['confirmation_message'] ?? '',
+                self::confirmation_template($form_settings),
                 $placeholders
             );
         } else {

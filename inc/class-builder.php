@@ -40,6 +40,9 @@ class DBFB_Builder {
             'send_confirmation' => true,
             'confirmation_subject' => __('Conferma iscrizione', 'db-form-builder'),
             'confirmation_message' => __("Gentile {nome},\n\nGrazie per averci contattato. Abbiamo ricevuto la tua richiesta.\n\nRiepilogo dati inviati:\n{riepilogo_dati}\n\nCordiali saluti", 'db-form-builder'),
+            // 2.14.0: documenti della Media Library linkati nella conferma
+            // (ID allegato WordPress, segnaposto {documenti}).
+            'confirmation_documents' => [],
             'send_admin_notification' => true,
             'admin_email' => get_option('admin_email'),
             'admin_subject' => __('Nuova richiesta dal form: {form_titolo}', 'db-form-builder'),
@@ -165,6 +168,7 @@ class DBFB_Builder {
             // 2.11.2: le email sono text/plain, niente HTML (wp_kses_post
             // convertiva "&" in "&amp;" che finiva letterale nell'email).
             'confirmation_message' => sanitize_textarea_field($settings['confirmation_message'] ?? ''),
+            'confirmation_documents' => self::sanitize_document_ids($settings['confirmation_documents'] ?? []),
             'send_admin_notification' => !empty($settings['send_admin_notification']),
             'admin_email' => sanitize_text_field($settings['admin_email'] ?? ''),
             'admin_subject' => sanitize_text_field($settings['admin_subject'] ?? ''),
@@ -179,6 +183,25 @@ class DBFB_Builder {
             'color_primary' => DBFB_Appearance::sanitize_color($settings['color_primary'] ?? ''),
             'color_text' => DBFB_Appearance::sanitize_color($settings['color_text'] ?? ''),
         ];
+    }
+
+    /**
+     * Sanitize dei documenti della conferma (2.14.0).
+     *
+     * Solo ID di allegati della Media Library realmente esistenti, senza
+     * duplicati, nell'ordine scelto dall'admin. Massimo 20.
+     */
+    private static function sanitize_document_ids($ids) {
+        if (!is_array($ids)) return [];
+        $clean = [];
+        foreach ($ids as $id) {
+            $id = absint($id);
+            if ($id && !in_array($id, $clean, true) && get_post_type($id) === 'attachment') {
+                $clean[] = $id;
+            }
+            if (count($clean) >= 20) break;
+        }
+        return $clean;
     }
 
     /**
