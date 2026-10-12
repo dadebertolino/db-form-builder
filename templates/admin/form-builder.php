@@ -467,7 +467,7 @@
                         <label for="dbfb-webhook-url"><?php _e('URL Webhook', 'db-form-builder'); ?></label>
                         <input type="url" id="dbfb-webhook-url" value="<?php echo esc_attr($form_settings['webhook_url'] ?? ''); ?>" placeholder="https://esempio.com/webhook">
                         <p class="description">
-                            <?php _e('Riceverà un POST JSON con: form_id, form_title, submitted_at, ip, fields (array con id, label, type, value) e raw_data. Compatibile con Zapier, Make, n8n, endpoint custom.', 'db-form-builder'); ?>
+                            <?php _e('Riceverà un POST JSON con: form_id, form_title, submitted_at, ip, privacy_url, fields (array con id, label, type, value) e raw_data; in più consents (consensi facoltativi) e attribution (provenienza della campagna) quando presenti. Compatibile con Zapier, Make, n8n, endpoint custom.', 'db-form-builder'); ?>
                         </p>
 
                         <?php // 2.16.0 ?>
