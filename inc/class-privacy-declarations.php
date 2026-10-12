@@ -307,6 +307,8 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 'forms_gdpr_intentional_off'  => 0,
                 // 2.16.0: consensi facoltativi configurati nei form pubblicati.
                 'has_marketing_consents'      => false,
+                // 2.17.0: almeno un form registra la provenienza della campagna.
+                'has_attribution'             => false,
                 'marketing_purposes'          => array(),
                 'marketing_webhook_hosts'     => array(),
             );
@@ -352,6 +354,9 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 if (!empty($settings['enable_gdpr']) && !empty($settings['gdpr_link'])) {
                     $features['has_specific_privacy_notice'] = true;
                     ++$features['forms_with_specific_notice'];
+                }
+                if (class_exists('DBFB_Attribution') && DBFB_Attribution::is_enabled($settings)) {
+                    $features['has_attribution'] = true;
                 }
                 // 2.16.0: consensi facoltativi.
                 $optional = class_exists('DBFB_Consents') ? DBFB_Consents::definitions($settings) : array();
@@ -488,7 +493,10 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                     $ip_label,
                     $privacy_notice_text,
                     $consent_status_text
-                ),
+                ) . (!empty($features['has_attribution'])
+                    // 2.17.0
+                    ? ' ' . __('Per i moduli con l\'opzione attiva, dati di provenienza della campagna: parametri UTM (sorgente, mezzo, campagna, termine, contenuto) presenti nell\'URL della pagina del modulo e percorso della pagina, letti al momento dell\'invio senza salvare nulla sul dispositivo del visitatore.', 'db-form-builder')
+                    : ''),
                 'retention'      => $retention_text,
                 'transfers'      => __('Nessuno per il salvataggio in sé. Il database delle submission risiede nella stessa istanza WordPress del sito.', 'db-form-builder'),
             );

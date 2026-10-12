@@ -99,7 +99,8 @@ class DBFB_Email {
         }
 
         $placeholders['{riepilogo_dati}'] = trim($riepilogo);
-        return $placeholders;
+        // 2.17.0: {utm_source}, {utm_campaign}, ..., {pagina_form}.
+        return array_merge($placeholders, DBFB_Attribution::placeholders($data));
     }
 
     /**
@@ -378,6 +379,17 @@ class DBFB_Email {
             $form_settings,
             $email_type === 'confirmation' ? 'user' : 'admin'
         );
+        // 2.17.0: provenienza di esempio, se l'opzione è attiva.
+        if (DBFB_Attribution::is_enabled($form_settings)) {
+            $placeholders = array_merge($placeholders, DBFB_Attribution::placeholders([
+                DBFB_Attribution::DATA_KEY => [
+                    'utm_source'   => 'newsletter',
+                    'utm_medium'   => 'email',
+                    'utm_campaign' => 'esempio',
+                    'landing'      => '/pagina-del-form/',
+                ],
+            ]));
+        }
         // 2.16.0: con consensi facoltativi, valori di esempio come se fossero
         // stati dati tutti. Il link di revoca di prova apre una pagina che
         // spiega che è un esempio.

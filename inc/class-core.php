@@ -701,6 +701,9 @@ class DB_Form_Builder {
                 'ph_ip' => __('IP visitatore', 'db-form-builder'),
                 // 2.14.0: documenti nella conferma
                 'ph_documents' => __('Documenti', 'db-form-builder'),
+                // 2.17.0: provenienza della campagna
+                'ph_attribution' => __('Provenienza (UTM)', 'db-form-builder'),
+                'ph_landing' => __('Pagina del form', 'db-form-builder'),
                 // 2.16.0: consensi facoltativi
                 'ph_revoke' => __('Link revoca consensi', 'db-form-builder'),
                 'ph_consents' => __('Consensi facoltativi', 'db-form-builder'),
@@ -1252,6 +1255,7 @@ class DB_Form_Builder {
      * @return array {
      *     fields: array  Field def da usare per il rendering [{id, type, label}, ...]
      *     data:   array  Valori della submission, senza chiavi riservate
+     *     attribution: array Provenienza della campagna (2.17.0), [] se assente
      * }
      */
     public static function get_submission_fields($submission, $current_fields) {
@@ -1260,6 +1264,9 @@ class DB_Form_Builder {
 
         $snapshot = isset($payload['_fields_snapshot']) ? $payload['_fields_snapshot'] : null;
         unset($payload['_fields_snapshot']); // mai esporlo come "campo"
+        // 2.17.0: anche la provenienza della campagna è una chiave riservata.
+        $attribution = DBFB_Attribution::from_data($payload);
+        unset($payload[DBFB_Attribution::DATA_KEY]);
 
         $fields = array();
         if (is_array($snapshot) && !empty($snapshot)) {
@@ -1287,8 +1294,9 @@ class DB_Form_Builder {
         }
 
         return array(
-            'fields' => $fields,
-            'data'   => $payload,
+            'fields'      => $fields,
+            'data'        => $payload,
+            'attribution' => $attribution,
         );
     }
 

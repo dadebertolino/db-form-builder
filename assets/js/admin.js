@@ -901,6 +901,7 @@
                 success_message: $('#dbfb-success-message').val(),
                 after_submit: $('input[name="dbfb-after-submit"]:checked').val() || 'message',
                 redirect_url: $('#dbfb-redirect-url').val(),
+                track_attribution: $('#dbfb-track-attribution').is(':checked'),
                 enable_captcha: $('#dbfb-enable-captcha').is(':checked'),
                 enable_honeypot: $('#dbfb-enable-honeypot').is(':checked'),
                 enable_gdpr: $('#dbfb-enable-gdpr').is(':checked'),
@@ -1080,7 +1081,15 @@
                     .append($('<span class="dbfb-placeholder-group-title"></span>').text(dbfb.strings.ph_general));
                 fixed.forEach(p => $general.append(DBFBPlaceholders.chip(p[0], p[1])));
 
-                $list.empty().append($fields, $general);
+                // 2.17.0: segnaposto della provenienza, solo con l'opzione attiva.
+                const $utm = $('<div class="dbfb-placeholder-group"></div>');
+                if ($('#dbfb-track-attribution').is(':checked')) {
+                    $utm.append($('<span class="dbfb-placeholder-group-title"></span>').text(dbfb.strings.ph_attribution));
+                    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'].forEach(k => $utm.append(DBFBPlaceholders.chip('{' + k + '}', k)));
+                    $utm.append(DBFBPlaceholders.chip('{pagina_form}', dbfb.strings.ph_landing));
+                }
+
+                $list.empty().append($fields, $general, $utm);
             });
         },
 
@@ -1105,6 +1114,8 @@
             this.render(true);
 
             $(document).on('mouseenter focusin', '.dbfb-placeholder-list', () => this.render(false));
+            // 2.17.0: i segnaposto UTM compaiono/spariscono con l'opzione.
+            $(document).on('change', '#dbfb-track-attribution', () => this.render(true));
 
             // Ricorda se l'ultimo campo usato era l'oggetto o il messaggio.
             $(document).on('focus', '.dbfb-settings-content input[type="text"], .dbfb-settings-content textarea', function() {

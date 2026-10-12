@@ -176,6 +176,15 @@
                         <input type="text" id="dbfb-redirect-url" value="<?php echo esc_attr($form_settings['redirect_url']); ?>" placeholder="/grazie/">
                         <p class="description"><?php _e('Una pagina di questo sito, come path (/grazie/) o URL completo. Il messaggio di successo viene mostrato per un istante prima del cambio pagina e l\'evento JavaScript dbfb:submitted parte prima del redirect.', 'db-form-builder'); ?></p>
                     </div>
+
+                    <?php // 2.17.0: provenienza della campagna ?>
+                    <div class="dbfb-settings-row">
+                        <label>
+                            <input type="checkbox" id="dbfb-track-attribution" <?php checked(!empty($form_settings['track_attribution'])); ?>>
+                            <?php _e('Registra la provenienza della campagna (UTM)', 'db-form-builder'); ?>
+                        </label>
+                        <p class="description"><?php _e('Salva con la risposta i parametri utm_source, utm_medium, utm_campaign, utm_term e utm_content presenti nell\'URL della pagina del form, più il percorso della pagina. Si leggono solo dall\'URL al momento dell\'invio: nulla viene salvato sul dispositivo del visitatore, quindi non serve il consenso cookie. Se il visitatore arriva su un\'altra pagina e poi raggiunge il form navigando, gli UTM non vengono registrati.', 'db-form-builder'); ?></p>
+                    </div>
                     
                     <?php 
                     $global_settings = DB_Form_Builder::get_global_settings();
@@ -458,7 +467,7 @@
                         <label for="dbfb-webhook-url"><?php _e('URL Webhook', 'db-form-builder'); ?></label>
                         <input type="url" id="dbfb-webhook-url" value="<?php echo esc_attr($form_settings['webhook_url'] ?? ''); ?>" placeholder="https://esempio.com/webhook">
                         <p class="description">
-                            <?php _e('Riceverà un POST JSON con: form_id, form_title, submitted_at, ip, fields (array con id, label, type, value) e raw_data. Compatibile con Zapier, Make, n8n, endpoint custom.', 'db-form-builder'); ?>
+                            <?php _e('Riceverà un POST JSON con: form_id, form_title, submitted_at, ip, privacy_url, fields (array con id, label, type, value) e raw_data; in più consents (consensi facoltativi) e attribution (provenienza della campagna) quando presenti. Compatibile con Zapier, Make, n8n, endpoint custom.', 'db-form-builder'); ?>
                         </p>
 
                         <?php // 2.16.0 ?>

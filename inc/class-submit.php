@@ -259,6 +259,15 @@ class DBFB_Submit {
         }
         $form_data['_fields_snapshot'] = $snapshot;
 
+        // 2.17.0: provenienza della campagna (chiave riservata, come lo
+        // snapshot). Solo se l'opzione è attiva sul form; chiavi in whitelist.
+        if (DBFB_Attribution::is_enabled($form_settings) && !empty($_POST['attribution'])) {
+            $attribution = DBFB_Attribution::sanitize(json_decode(wp_unslash((string) $_POST['attribution']), true));
+            if ($attribution) {
+                $form_data[DBFB_Attribution::DATA_KEY] = $attribution;
+            }
+        }
+
         $result = $wpdb->insert($table, [
             'form_id' => $form_id,
             'data' => json_encode($form_data),

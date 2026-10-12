@@ -281,6 +281,42 @@
         });
     }
 
+    // =========================================================
+    // PROVENIENZA DELLA CAMPAGNA (2.17.0)
+    // =========================================================
+    //
+    // Solo dall'URL della pagina corrente, al momento dell'invio: nessuna
+    // scrittura su cookie o storage del browser. Le chiavi arrivano dal
+    // server (data-dbfb-attribution, uguale per tutti); quelle che non sono
+    // utm_* (identificativi di click aggiunti col filter) partono solo con
+    // il consenso della categoria indicata.
+
+    function hasConsentFor(category) {
+        if (window.DBCM && typeof window.DBCM.hasConsent === 'function') {
+            return !!window.DBCM.hasConsent(category);
+        }
+        if (typeof window.wp_has_consent === 'function') {
+            return !!window.wp_has_consent(category);
+        }
+        return false; // nessun consent manager: niente identificativi di tracciamento
+    }
+
+    function collectAttribution($form) {
+        var keysAttr = $form.attr('data-dbfb-attribution');
+        if (keysAttr === undefined) return null;
+        var category = $form.attr('data-dbfb-attribution-consent') || 'marketing';
+        var params = getUrlParams();
+        var out = { landing: window.location.pathname };
+        String(keysAttr).split(',').forEach(function(key) {
+            key = key.trim();
+            if (!key || !Object.prototype.hasOwnProperty.call(params, key)) return;
+            if (key.indexOf('utm_') !== 0 && !hasConsentFor(category)) return;
+            var value = String(params[key]).trim();
+            if (value !== '') out[key] = value.slice(0, 150);
+        });
+        return out;
+    }
+
     // Evento DOM nativo (2.15.0): ascoltabile anche senza jQuery, risale
     // fino a document.
     function dispatchFormEvent($form, name, detail) {
@@ -659,6 +695,8 @@
         var honeypotValue = $form.find('[name="dbfb_website_url"]').val() || '';
         var timestamp = $form.find('[name="dbfb_timestamp"]').val() || '';
         var hiddenFields = $form.find('[name="dbfb_hidden_fields"]').val() || '[]';
+        // 2.17.0: provenienza della campagna, solo dall'URL corrente.
+        var attribution = collectAttribution($form);
         // 2.16.0: chiavi dei consensi facoltativi spuntati.
         var optionalConsents = $form.find('[name="dbfb_optional_consent[]"]:checked').map(function() {
             return this.value;
@@ -678,6 +716,7 @@
             fd.append('dbfb_timestamp', timestamp);
             fd.append('hidden_fields', hiddenFields);
             fd.append('consents', JSON.stringify(optionalConsents));
+            if (attribution) fd.append('attribution', JSON.stringify(attribution));
             
             // Append files
             $form.find('.dbfb-file-input').each(function() {

@@ -20,7 +20,7 @@ foreach ($form_fields as $f) { if ($f['type'] === 'file') { $has_file_fields = t
 ?>
 
 <form class="dbfb-form<?php echo DBFB_Appearance::has_background($form_settings) ? ' dbfb-has-bg' : ''; ?>"<?php echo DBFB_Appearance::style_attribute($form_settings); // già escapato ?>
-      data-form-id="<?php echo esc_attr($form_id); ?>" 
+      data-form-id="<?php echo esc_attr($form_id); ?>"<?php echo DBFB_Attribution::form_attrs($form_settings); // 2.17.0, già escapato ?>
       <?php if ($enable_captcha): ?>data-dbfb-recaptcha="<?php echo esc_attr($recaptcha_version); ?>"<?php endif; ?>
       <?php if ($has_file_fields): ?>enctype="multipart/form-data"<?php endif; ?>
       role="form"

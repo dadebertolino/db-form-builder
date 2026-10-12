@@ -23,6 +23,8 @@ class DBFB_Builder {
             // 2.15.0: dopo l'invio mostra il messaggio oppure reindirizza.
             'after_submit' => 'message',
             'redirect_url' => '',
+            // 2.17.0: registra gli UTM presenti nell'URL della pagina del form.
+            'track_attribution' => false,
             'success_message' => __('Grazie! Il modulo è stato inviato con successo.', 'db-form-builder'),
             'enable_captcha' => false,
             'enable_honeypot' => true,
@@ -186,6 +188,7 @@ class DBFB_Builder {
             'submit_text' => sanitize_text_field($settings['submit_text'] ?? 'Invia'),
             'success_message' => wp_kses_post($settings['success_message'] ?? ''),
             'after_submit' => ($settings['after_submit'] ?? '') === 'redirect' ? 'redirect' : 'message',
+            'track_attribution' => !empty($settings['track_attribution']),
             'redirect_url' => esc_url_raw(trim((string) ($settings['redirect_url'] ?? '')), ['http', 'https']),
             'enable_captcha' => !empty($settings['enable_captcha']),
             'enable_honeypot' => !empty($settings['enable_honeypot']),
