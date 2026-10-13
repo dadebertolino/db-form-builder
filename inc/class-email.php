@@ -53,7 +53,7 @@ class DBFB_Email {
 
         $riepilogo = '';
         foreach ($fields as $field) {
-            if (in_array($field['type'], ['divider', 'html', 'image', 'pagebreak'])) continue;
+            if (in_array($field['type'], ['divider', 'html', 'image', 'pagebreak'], true)) continue;
 
             $value = isset($data[$field['id']]) ? $data[$field['id']] : '';
 
@@ -335,8 +335,8 @@ class DBFB_Email {
         }
 
         $form_id = intval($_POST['form_id'] ?? 0);
-        $email_type = sanitize_text_field($_POST['email_type'] ?? '');
-        $test_email = sanitize_email($_POST['test_email'] ?? '');
+        $email_type = sanitize_text_field(wp_unslash($_POST['email_type'] ?? ''));
+        $test_email = sanitize_email(wp_unslash($_POST['test_email'] ?? ''));
 
         if (!$form_id || !$email_type || !$test_email) {
             wp_send_json_error(['message' => 'Parametri mancanti']);
@@ -348,7 +348,7 @@ class DBFB_Email {
 
         $sample_data = [];
         foreach ($form_fields as $field) {
-            if (in_array($field['type'], ['divider', 'html', 'image', 'pagebreak'])) continue;
+            if (in_array($field['type'], ['divider', 'html', 'image', 'pagebreak'], true)) continue;
             switch ($field['type']) {
                 case 'email':
                     $sample_data[$field['id']] = 'esempio@email.com';

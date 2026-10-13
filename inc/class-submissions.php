@@ -11,7 +11,7 @@ class DBFB_Submissions {
         $form_fields = get_post_meta($form_id, '_dbfb_fields', true) ?: [];
 
         $form_fields = array_filter($form_fields, function ($f) {
-            return !in_array($f['type'], ['divider', 'html', 'image', 'pagebreak']);
+            return !in_array($f['type'], ['divider', 'html', 'image', 'pagebreak'], true);
         });
 
         $submissions = $wpdb->get_results($wpdb->prepare(
@@ -29,10 +29,13 @@ class DBFB_Submissions {
         global $wpdb;
         $table = $wpdb->prefix . 'dbfb_submissions';
 
+        // Routing di sola visualizzazione, form_id passato a intval().
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended
         if (isset($_GET['form_id']) && intval($_GET['form_id']) > 0) {
             self::render_page(intval($_GET['form_id']));
             return;
         }
+        // phpcs:enable WordPress.Security.NonceVerification.Recommended
 
         $forms = get_posts([
             'post_type' => 'dbfb_form',

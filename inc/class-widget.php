@@ -12,17 +12,18 @@ class DBFB_Widget extends WP_Widget {
     }
 
     public function widget($args, $instance) {
-        echo $args['before_widget'];
+        // before_/after_widget e before_/after_title sono markup fornito dal tema.
+        echo $args['before_widget']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
         if (!empty($instance['title'])) {
-            echo $args['before_title'] . apply_filters('widget_title', $instance['title']) . $args['after_title'];
+            echo $args['before_title'] . esc_html(apply_filters('widget_title', $instance['title'])) . $args['after_title']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         }
 
         if (!empty($instance['form_id'])) {
             echo do_shortcode('[dbfb_form id="' . intval($instance['form_id']) . '"]');
         }
 
-        echo $args['after_widget'];
+        echo $args['after_widget']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
     }
 
     public function form($instance) {
@@ -38,7 +39,7 @@ class DBFB_Widget extends WP_Widget {
         ?>
         <p>
             <label for="<?php echo esc_attr($this->get_field_id('title')); ?>">
-                <?php _e('Titolo:', 'db-form-builder'); ?>
+                <?php esc_html_e('Titolo:', 'db-form-builder'); ?>
             </label>
             <input class="widefat" id="<?php echo esc_attr($this->get_field_id('title')); ?>"
                    name="<?php echo esc_attr($this->get_field_name('title')); ?>"
@@ -46,13 +47,13 @@ class DBFB_Widget extends WP_Widget {
         </p>
         <p>
             <label for="<?php echo esc_attr($this->get_field_id('form_id')); ?>">
-                <?php _e('Seleziona Form:', 'db-form-builder'); ?>
+                <?php esc_html_e('Seleziona Form:', 'db-form-builder'); ?>
             </label>
             <select class="widefat" id="<?php echo esc_attr($this->get_field_id('form_id')); ?>"
                     name="<?php echo esc_attr($this->get_field_name('form_id')); ?>">
-                <option value=""><?php _e('-- Seleziona --', 'db-form-builder'); ?></option>
+                <option value=""><?php esc_html_e('-- Seleziona --', 'db-form-builder'); ?></option>
                 <?php foreach ($forms as $form): ?>
-                    <option value="<?php echo $form->ID; ?>" <?php selected($form_id, $form->ID); ?>>
+                    <option value="<?php echo (int) $form->ID; ?>" <?php selected($form_id, $form->ID); ?>>
                         <?php echo esc_html($form->post_title); ?>
                     </option>
                 <?php endforeach; ?>

@@ -20,10 +20,12 @@ class DBFB_Submit {
         // 2.13.0: nonce solo per gli utenti loggati; per gli anonimi controllo
         // di origine + rate limit (vedi verify_submit_request()).
         self::verify_submit_request();
+        // phpcs:disable WordPress.Security.NonceVerification.Missing -- verificato in verify_submit_request().
 
         $form_id = intval($_POST['form_id'] ?? 0);
-        $form_data = json_decode(stripslashes($_POST['data'] ?? '{}'), true);
-        $recaptcha_token = sanitize_text_field($_POST['recaptcha_token'] ?? '');
+        // JSON grezzo: sanitizzato per tipo di campo da sanitize_submission_data() qui sotto.
+        $form_data = json_decode(wp_unslash($_POST['data'] ?? '{}'), true); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+        $recaptcha_token = sanitize_text_field(wp_unslash($_POST['recaptcha_token'] ?? ''));
 
         if (!$form_id || empty($form_data)) {
             wp_send_json_error(['message' => 'Dati non validi']);
@@ -48,7 +50,7 @@ class DBFB_Submit {
 
         // Honeypot check
         if (!empty($form_settings['enable_honeypot'])) {
-            $honeypot_value = sanitize_text_field($_POST['dbfb_website_url'] ?? '');
+            $honeypot_value = sanitize_text_field(wp_unslash($_POST['dbfb_website_url'] ?? ''));
             if (!empty($honeypot_value)) {
                 wp_send_json_success([
                     'message' => $form_settings['success_message'] ?? __('Form inviato con successo!', 'db-form-builder')
@@ -63,7 +65,7 @@ class DBFB_Submit {
             // scartato. Retrocompat: le submission senza token valido non
             // vengono bloccate qui (il form potrebbe essere cachato da una
             // versione precedente), restano coperte da honeypot + rate limit.
-            $elapsed = self::verify_time_token($_POST['dbfb_timestamp'] ?? '');
+            $elapsed = self::verify_time_token(sanitize_text_field(wp_unslash($_POST['dbfb_timestamp'] ?? '')));
             if ($elapsed !== null && $elapsed < 3) {
                 wp_send_json_success([
                     'message' => $form_settings['success_message'] ?? __('Form inviato con successo!', 'db-form-builder')
@@ -176,14 +178,14 @@ class DBFB_Submit {
         // Hidden fields (conditional logic)
         $hidden_fields = [];
         if (!empty($_POST['hidden_fields'])) {
-            $hidden_fields = json_decode(stripslashes($_POST['hidden_fields']), true);
+            $hidden_fields = json_decode(wp_unslash($_POST['hidden_fields']), true); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_key() sotto.
             if (!is_array($hidden_fields)) $hidden_fields = [];
             $hidden_fields = array_map('sanitize_key', $hidden_fields);
         }
 
         // Validate required (skip hidden)
         foreach ($form_fields as $field) {
-            if (in_array($field['id'], $hidden_fields)) continue;
+            if (in_array($field['id'], $hidden_fields, true)) continue;
             if ($field['type'] === 'file') {
                 // File required check
                 if (!empty($field['required'])) {
@@ -262,7 +264,7 @@ class DBFB_Submit {
         // 2.17.0: provenienza della campagna (chiave riservata, come lo
         // snapshot). Solo se l'opzione è attiva sul form; chiavi in whitelist.
         if (DBFB_Attribution::is_enabled($form_settings) && !empty($_POST['attribution'])) {
-            $attribution = DBFB_Attribution::sanitize(json_decode(wp_unslash((string) $_POST['attribution']), true));
+            $attribution = DBFB_Attribution::sanitize(json_decode(wp_unslash((string) $_POST['attribution']), true)); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelist in DBFB_Attribution::sanitize().
             if ($attribution) {
                 $form_data[DBFB_Attribution::DATA_KEY] = $attribution;
             }
@@ -308,7 +310,7 @@ class DBFB_Submit {
         // payload del client viene ignorato.
         $consent_rows = [];
         if ($submission_id && DBFB_Consents::definitions($form_settings)) {
-            $given_keys = json_decode(stripslashes((string) ($_POST['consents'] ?? '[]')), true);
+            $given_keys = json_decode(wp_unslash((string) ($_POST['consents'] ?? '[]')), true); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_key() sotto.
             $given_keys = is_array($given_keys)
                 ? array_map('sanitize_key', array_filter($given_keys, 'is_scalar'))
                 : [];
@@ -364,6 +366,7 @@ class DBFB_Submit {
             if ($redirect !== '') $response['redirect'] = $redirect;
         }
         wp_send_json_success($response);
+        // phpcs:enable WordPress.Security.NonceVerification.Missing
     }
 
     /**
@@ -709,11 +712,15 @@ class DBFB_Submit {
     ];
 
     private static function process_file_uploads($form_id, $form_fields, $hidden_fields) {
+        // Chiamata solo da ajax_submit_form(), dopo verify_submit_request(). $_FILES
+        // non si sanifica: nome ripulito con sanitize_file_name(), estensione in
+        // whitelist, tmp_name usato solo da move_uploaded_file().
+        // phpcs:disable WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput
         $uploaded = [];
 
         foreach ($form_fields as $field) {
             if ($field['type'] !== 'file') continue;
-            if (in_array($field['id'], $hidden_fields)) continue;
+            if (in_array($field['id'], $hidden_fields, true)) continue;
 
             $file_key = 'dbfb_file_' . $field['id'];
             if (empty($_FILES[$file_key]['name'])) continue;
@@ -755,13 +762,13 @@ class DBFB_Submit {
 
                 // Check extension
                 $ext = strtolower(pathinfo($names[$i], PATHINFO_EXTENSION));
-                if (in_array($ext, self::$blocked_extensions)) {
+                if (in_array($ext, self::$blocked_extensions, true)) {
                     return new WP_Error('blocked_extension', sprintf(
                         __('Il tipo di file "%s" non è consentito per motivi di sicurezza', 'db-form-builder'),
                         $ext
                     ));
                 }
-                if (!in_array($ext, $allowed_extensions)) {
+                if (!in_array($ext, $allowed_extensions, true)) {
                     return new WP_Error('invalid_extension', sprintf(
                         __('Il tipo di file "%1$s" non è ammesso. Formati consentiti: %2$s', 'db-form-builder'),
                         $ext, $allowed_ext_str
@@ -839,6 +846,7 @@ class DBFB_Submit {
             }
         }
 
+        // phpcs:enable WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput
         return $uploaded;
     }
 

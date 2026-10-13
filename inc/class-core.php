@@ -543,7 +543,7 @@ class DB_Form_Builder {
 
         if (get_user_meta(get_current_user_id(), 'dbfb_dismissed_nginx_notice_213', true)) return;
 
-        $server = isset($_SERVER['SERVER_SOFTWARE']) ? $_SERVER['SERVER_SOFTWARE'] : '';
+        $server = isset($_SERVER['SERVER_SOFTWARE']) ? sanitize_text_field(wp_unslash($_SERVER['SERVER_SOFTWARE'])) : '';
         $is_apache = (stripos($server, 'apache') !== false || stripos($server, 'litespeed') !== false);
         if ($is_apache || $server === '') return;
 
@@ -566,7 +566,7 @@ class DB_Form_Builder {
     public static function handle_nginx_notice_dismiss() {
         if (!isset($_GET['dbfb_dismiss_nginx'])) return;
         if (!current_user_can('manage_options')) return;
-        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'dbfb_dismiss_nginx')) return;
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'dbfb_dismiss_nginx')) return;
         update_user_meta(get_current_user_id(), 'dbfb_dismissed_nginx_notice_213', 1);
     }
 
@@ -598,7 +598,7 @@ class DB_Form_Builder {
      */
     public static function render_webhook_deliveries_page() {
         if (!current_user_can('manage_options')) {
-            wp_die(__('Permessi insufficienti', 'db-form-builder'));
+            wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
         }
 
         global $wpdb;
@@ -607,7 +607,7 @@ class DB_Form_Builder {
         // Handler bulk actions (POST).
         if (isset($_POST['dbfb_delivery_action']) && !empty($_POST['delivery_ids'])
             && check_admin_referer('dbfb_deliveries_action')) {
-            $action = $_POST['dbfb_delivery_action'];
+            $action = sanitize_key(wp_unslash($_POST['dbfb_delivery_action']));
             $ids = array_map('intval', (array) $_POST['delivery_ids']);
             $ids = array_filter($ids);
 
@@ -617,25 +617,27 @@ class DB_Form_Builder {
                     DBFB_Webhook::retry_delivery($id);
                     ++$retried;
                 }
-                wp_redirect(add_query_arg('retried', $retried, admin_url('admin.php?page=dbfb-webhook-deliveries')));
+                wp_safe_redirect(add_query_arg('retried', $retried, admin_url('admin.php?page=dbfb-webhook-deliveries')));
                 exit;
             }
 
             if ($action === 'delete') {
                 $placeholders = implode(',', array_fill(0, count($ids), '%d'));
                 $deleted = (int) $wpdb->query($wpdb->prepare(
+                    // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $placeholders.
                     "DELETE FROM $table WHERE id IN ($placeholders)", $ids
                 ));
-                wp_redirect(add_query_arg('deleted', $deleted, admin_url('admin.php?page=dbfb-webhook-deliveries')));
+                wp_safe_redirect(add_query_arg('deleted', $deleted, admin_url('admin.php?page=dbfb-webhook-deliveries')));
                 exit;
             }
         }
 
         // Status filter.
         $allowed_statuses = array('all', 'pending', 'success', 'failed', 'dead');
-        $status_filter = isset($_GET['status']) && in_array($_GET['status'], $allowed_statuses, true)
-            ? $_GET['status']
-            : 'all';
+        $status_filter = isset($_GET['status']) ? sanitize_key(wp_unslash($_GET['status'])) : 'all'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- solo filtro di visualizzazione.
+        if (!in_array($status_filter, $allowed_statuses, true)) {
+            $status_filter = 'all';
+        }
 
         // Conta per status (per i tab).
         $count_by_status = array('pending' => 0, 'success' => 0, 'failed' => 0, 'dead' => 0);
@@ -882,6 +884,8 @@ class DB_Form_Builder {
     // =========================================================
 
     public function render_forms_page() {
+        // Routing di sola visualizzazione: nessuna modifica, form_id passato a intval().
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended
         if (isset($_GET['action']) && $_GET['action'] === 'submissions' && isset($_GET['form_id'])) {
             DBFB_Submissions::render_page(intval($_GET['form_id']));
             return;
@@ -891,6 +895,7 @@ class DB_Form_Builder {
             DBFB_Builder::render_form_builder(intval($_GET['form_id']));
             return;
         }
+        // phpcs:enable WordPress.Security.NonceVerification.Recommended
 
         $forms = get_posts([
             'post_type' => 'dbfb_form',
@@ -928,29 +933,29 @@ class DB_Form_Builder {
         // Delete form
         if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['form_id'])) {
             $form_id = intval($_GET['form_id']);
-            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'dbfb_delete_' . $form_id)) {
-                wp_die(__('Azione non autorizzata', 'db-form-builder'));
+            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'dbfb_delete_' . $form_id)) {
+                wp_die(esc_html__('Azione non autorizzata', 'db-form-builder'));
             }
-            if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti', 'db-form-builder'));
+            if (!current_user_can('manage_options')) wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
 
             wp_delete_post($form_id, true);
             // 2.11.2: cancella anche allegati su disco e webhook deliveries
             // (contengono i dati personali delle submission).
             self::delete_form_submissions($form_id);
-            wp_redirect(admin_url('admin.php?page=dbfb-forms&deleted=1'));
+            wp_safe_redirect(admin_url('admin.php?page=dbfb-forms&deleted=1'));
             exit;
         }
 
         // Duplicate form
         if (isset($_GET['action']) && $_GET['action'] === 'duplicate' && isset($_GET['form_id'])) {
             $form_id = intval($_GET['form_id']);
-            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'dbfb_duplicate_' . $form_id)) {
-                wp_die(__('Azione non autorizzata', 'db-form-builder'));
+            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'dbfb_duplicate_' . $form_id)) {
+                wp_die(esc_html__('Azione non autorizzata', 'db-form-builder'));
             }
-            if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti', 'db-form-builder'));
+            if (!current_user_can('manage_options')) wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
 
             $original = get_post($form_id);
-            if (!$original) wp_die(__('Form non trovato', 'db-form-builder'));
+            if (!$original) wp_die(esc_html__('Form non trovato', 'db-form-builder'));
 
             $new_form_id = wp_insert_post([
                 'post_type' => 'dbfb_form',
@@ -963,10 +968,10 @@ class DB_Form_Builder {
                 $settings = get_post_meta($form_id, '_dbfb_settings', true);
                 if ($fields) update_post_meta($new_form_id, '_dbfb_fields', $fields);
                 if ($settings) update_post_meta($new_form_id, '_dbfb_settings', $settings);
-                wp_redirect(admin_url('admin.php?page=dbfb-forms&action=edit&form_id=' . $new_form_id . '&duplicated=1'));
+                wp_safe_redirect(admin_url('admin.php?page=dbfb-forms&action=edit&form_id=' . $new_form_id . '&duplicated=1'));
                 exit;
             }
-            wp_redirect(admin_url('admin.php?page=dbfb-forms'));
+            wp_safe_redirect(admin_url('admin.php?page=dbfb-forms'));
             exit;
         }
 
@@ -974,10 +979,10 @@ class DB_Form_Builder {
         if (isset($_GET['action']) && $_GET['action'] === 'delete_submission' && isset($_GET['submission_id'])) {
             $submission_id = intval($_GET['submission_id']);
             $form_id = intval($_GET['form_id'] ?? 0);
-            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'dbfb_delete_sub_' . $submission_id)) {
-                wp_die(__('Azione non autorizzata', 'db-form-builder'));
+            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'dbfb_delete_sub_' . $submission_id)) {
+                wp_die(esc_html__('Azione non autorizzata', 'db-form-builder'));
             }
-            if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti', 'db-form-builder'));
+            if (!current_user_can('manage_options')) wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
 
             global $wpdb;
             $table = $wpdb->prefix . 'dbfb_submissions';
@@ -994,17 +999,17 @@ class DB_Form_Builder {
 
             $wpdb->delete($table, ['id' => $submission_id], ['%d']);
             $redirect_page = $form_id ? 'dbfb-forms&action=submissions&form_id=' . $form_id : 'dbfb-submissions';
-            wp_redirect(admin_url('admin.php?page=' . $redirect_page . '&sub_deleted=1'));
+            wp_safe_redirect(admin_url('admin.php?page=' . $redirect_page . '&sub_deleted=1'));
             exit;
         }
 
         // Bulk delete submissions
         if (isset($_POST['dbfb_bulk_action']) && $_POST['dbfb_bulk_action'] === 'delete' && !empty($_POST['submission_ids'])) {
             $form_id = intval($_POST['form_id'] ?? 0);
-            if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'dbfb_bulk_submissions')) {
-                wp_die(__('Azione non autorizzata', 'db-form-builder'));
+            if (!isset($_POST['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'dbfb_bulk_submissions')) {
+                wp_die(esc_html__('Azione non autorizzata', 'db-form-builder'));
             }
-            if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti', 'db-form-builder'));
+            if (!current_user_can('manage_options')) wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
 
             global $wpdb;
             $table = $wpdb->prefix . 'dbfb_submissions';
@@ -1013,6 +1018,7 @@ class DB_Form_Builder {
 
             // 2.4.0: cancella i file allegati prima del DELETE bulk.
             $rows = $wpdb->get_results($wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $placeholders.
                 "SELECT id, data FROM $table WHERE id IN ($placeholders)", $ids
             ));
             foreach ($rows as $row) {
@@ -1021,9 +1027,10 @@ class DB_Form_Builder {
             self::delete_submission_deliveries($ids);
             DBFB_Consents::delete_for_submissions($ids);
 
+            // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $placeholders.
             $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE id IN ($placeholders)", $ids));
             $redirect_page = $form_id ? 'dbfb-forms&action=submissions&form_id=' . $form_id : 'dbfb-submissions';
-            wp_redirect(admin_url('admin.php?page=' . $redirect_page . '&sub_deleted=' . count($ids)));
+            wp_safe_redirect(admin_url('admin.php?page=' . $redirect_page . '&sub_deleted=' . count($ids)));
             exit;
         }
 
@@ -1033,11 +1040,11 @@ class DB_Form_Builder {
         // un colpo solo TUTTE le righe del form senza serializzare gli ID.
         if (isset($_POST['dbfb_bulk_action']) && $_POST['dbfb_bulk_action'] === 'delete_all') {
             $form_id = intval($_POST['form_id'] ?? 0);
-            if (!$form_id) wp_die(__('Form non valido', 'db-form-builder'));
-            if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'dbfb_bulk_submissions')) {
-                wp_die(__('Azione non autorizzata', 'db-form-builder'));
+            if (!$form_id) wp_die(esc_html__('Form non valido', 'db-form-builder'));
+            if (!isset($_POST['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'dbfb_bulk_submissions')) {
+                wp_die(esc_html__('Azione non autorizzata', 'db-form-builder'));
             }
-            if (!current_user_can('manage_options')) wp_die(__('Permessi insufficienti', 'db-form-builder'));
+            if (!current_user_can('manage_options')) wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
 
             global $wpdb;
             $table = $wpdb->prefix . 'dbfb_submissions';
@@ -1052,7 +1059,7 @@ class DB_Form_Builder {
             // anche dall'eliminazione del form; include le webhook deliveries.
             self::delete_form_submissions($form_id);
 
-            wp_redirect(admin_url('admin.php?page=dbfb-forms&action=submissions&form_id=' . $form_id . '&sub_deleted=' . $count));
+            wp_safe_redirect(admin_url('admin.php?page=dbfb-forms&action=submissions&form_id=' . $form_id . '&sub_deleted=' . $count));
             exit;
         }
     }
@@ -1123,9 +1130,9 @@ class DB_Form_Builder {
             // primo perché in genere è la fonte più affidabile quando
             // presente.
             if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-                $ip = $_SERVER['HTTP_CF_CONNECTING_IP'];
+                $ip = sanitize_text_field(wp_unslash($_SERVER['HTTP_CF_CONNECTING_IP']));
             } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
-                $ip = $_SERVER['HTTP_X_REAL_IP'];
+                $ip = sanitize_text_field(wp_unslash($_SERVER['HTTP_X_REAL_IP']));
             } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
                 // X-Forwarded-For è una catena "client, proxy1, proxy2" in cui
                 // OGNI hop appende chi ha visto. Il client controlla la testa
@@ -1134,13 +1141,13 @@ class DB_Form_Builder {
                 // più vicino a noi, quindi è l'unico affidabile quando ci
                 // fidiamo del proxy. Prendere il primo elemento consentirebbe
                 // di aggirare il rate limit ruotando IP falsi.
-                $forwarded = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+                $forwarded = explode(',', sanitize_text_field(wp_unslash($_SERVER['HTTP_X_FORWARDED_FOR'])));
                 $ip = trim(end($forwarded));
             }
         }
 
         if (empty($ip) && !empty($_SERVER['REMOTE_ADDR'])) {
-            $ip = $_SERVER['REMOTE_ADDR'];
+            $ip = sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR']));
         }
 
         // Validazione: garantiamo che sia un IP plausibile prima di restituirlo.
@@ -1490,6 +1497,7 @@ class DB_Form_Builder {
         global $wpdb;
         $deliveries   = $wpdb->prefix . 'dbfb_webhook_deliveries';
         $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $placeholders.
         $wpdb->query($wpdb->prepare("DELETE FROM $deliveries WHERE submission_id IN ($placeholders)", $ids));
     }
 

@@ -106,6 +106,7 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
             list($where_sql, $params) = self::build_hub_consents_where($args);
 
             if (!empty($params)) {
+                // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder generati da build_hub_consents_where().
                 return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} {$where_sql}", $params));
             }
             return (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table} {$where_sql}");

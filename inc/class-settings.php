@@ -41,24 +41,28 @@ class DBFB_Settings {
             wp_send_json_error(['message' => 'Permessi insufficienti']);
         }
 
+        // Sanificati da metodi del plugin (whitelist / clamp / sanitize_hex_color),
+        // che WPCS non riconosce come sanificatori.
+        // phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
         $settings = [
-            'recaptcha_version' => sanitize_text_field($_POST['recaptcha_version'] ?? 'v2'),
-            'recaptcha_site_key' => sanitize_text_field($_POST['recaptcha_site_key'] ?? ''),
-            'recaptcha_secret_key' => sanitize_text_field($_POST['recaptcha_secret_key'] ?? ''),
-            'from_email' => sanitize_email($_POST['from_email'] ?? ''),
-            'from_name' => sanitize_text_field($_POST['from_name'] ?? ''),
+            'recaptcha_version' => sanitize_text_field(wp_unslash($_POST['recaptcha_version'] ?? 'v2')),
+            'recaptcha_site_key' => sanitize_text_field(wp_unslash($_POST['recaptcha_site_key'] ?? '')),
+            'recaptcha_secret_key' => sanitize_text_field(wp_unslash($_POST['recaptcha_secret_key'] ?? '')),
+            'from_email' => sanitize_email(wp_unslash($_POST['from_email'] ?? '')),
+            'from_name' => sanitize_text_field(wp_unslash($_POST['from_name'] ?? '')),
             // Privacy by design (2.3.0): modalità di salvataggio dell'IP del
             // client nelle submission. Default 'hashed' per nuove installazioni.
-            'ip_storage_mode' => self::sanitize_ip_storage_mode($_POST['ip_storage_mode'] ?? 'hashed'),
+            'ip_storage_mode' => self::sanitize_ip_storage_mode(wp_unslash($_POST['ip_storage_mode'] ?? 'hashed')),
             // Retention (2.3.0): clamp 0-3650 (10 anni max). 0 = illimitata.
-            'submissions_retention_days' => self::sanitize_retention_days($_POST['submissions_retention_days'] ?? 365),
+            'submissions_retention_days' => self::sanitize_retention_days(wp_unslash($_POST['submissions_retention_days'] ?? 365)),
             // Disinstallazione (2.3.1): opt-in per cancellazione totale dati.
             'delete_data_on_uninstall' => !empty($_POST['delete_data_on_uninstall']),
             // Aspetto (2.12.0): colori del frontend, '' = predefinito.
-            'color_bg' => DBFB_Appearance::sanitize_color($_POST['color_bg'] ?? ''),
-            'color_primary' => DBFB_Appearance::sanitize_color($_POST['color_primary'] ?? ''),
-            'color_text' => DBFB_Appearance::sanitize_color($_POST['color_text'] ?? ''),
+            'color_bg' => DBFB_Appearance::sanitize_color(wp_unslash($_POST['color_bg'] ?? '')),
+            'color_primary' => DBFB_Appearance::sanitize_color(wp_unslash($_POST['color_primary'] ?? '')),
+            'color_text' => DBFB_Appearance::sanitize_color(wp_unslash($_POST['color_text'] ?? '')),
         ];
+        // phpcs:enable
 
         update_option('dbfb_global_settings', $settings);
         wp_send_json_success(['message' => 'Impostazioni salvate con successo!']);
@@ -97,9 +101,9 @@ class DBFB_Settings {
             wp_send_json_error(['message' => 'Permessi insufficienti']);
         }
 
-        $to_email = sanitize_email($_POST['to_email'] ?? '');
-        $from_name = sanitize_text_field($_POST['from_name'] ?? get_bloginfo('name'));
-        $from_email = sanitize_email($_POST['from_email'] ?? get_option('admin_email'));
+        $to_email = sanitize_email(wp_unslash($_POST['to_email'] ?? ''));
+        $from_name = isset($_POST['from_name']) ? sanitize_text_field(wp_unslash($_POST['from_name'])) : get_bloginfo('name');
+        $from_email = isset($_POST['from_email']) ? sanitize_email(wp_unslash($_POST['from_email'])) : get_option('admin_email');
 
         if (empty($to_email) || !is_email($to_email)) {
             wp_send_json_error(['message' => 'Inserisci un indirizzo email valido']);
@@ -143,10 +147,10 @@ class DBFB_Settings {
             wp_send_json_error(['message' => 'Permessi insufficienti']);
         }
 
-        $site_key = sanitize_text_field($_POST['site_key'] ?? '');
-        $secret_key = sanitize_text_field($_POST['secret_key'] ?? '');
-        $version = sanitize_text_field($_POST['version'] ?? 'v2');
-        $token = sanitize_text_field($_POST['token'] ?? '');
+        $site_key = sanitize_text_field(wp_unslash($_POST['site_key'] ?? ''));
+        $secret_key = sanitize_text_field(wp_unslash($_POST['secret_key'] ?? ''));
+        $version = sanitize_text_field(wp_unslash($_POST['version'] ?? 'v2'));
+        $token = sanitize_text_field(wp_unslash($_POST['token'] ?? ''));
 
         if (empty($site_key) || empty($secret_key)) {
             wp_send_json_error(['message' => 'Inserisci entrambe le chiavi']);
