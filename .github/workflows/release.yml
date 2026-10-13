@@ -11,9 +11,9 @@ permissions:
 jobs:
   build-release:
     name: "Build ZIP e pubblica Release"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verifica coerenza versione tag / plugin
         run: |
@@ -36,7 +36,7 @@ jobs:
           unzip -l "db-form-builder-${GITHUB_REF_NAME#v}.zip" | head -20
 
       - name: Crea/aggiorna Release con lo ZIP
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: db-form-builder-*.zip
           generate_release_notes: true
