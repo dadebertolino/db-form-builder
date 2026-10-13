@@ -105,6 +105,9 @@ class DB_Form_Builder {
         // Consensi facoltativi (2.16.0): pagina pubblica di revoca e revoca
         // manuale dalla vista Risposte.
         DBFB_Consents::init();
+
+        // Import / export dei form come file JSON (2.18.0).
+        DBFB_Import_Export::init();
     }
 
     // =========================================================

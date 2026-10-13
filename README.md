@@ -36,6 +36,7 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
 - **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, allegati scaricabili solo dall'admin (2.13.0+)
 - **Aggiornamenti automatici** — da GitHub Releases, direttamente in Plugin → Aggiornamenti (2.13.0+)
 - **Duplica form** — Copia campi e impostazioni con un click
+- **Esporta / importa form (2.18.0+)** — Un form come file `.json`, per passarlo da un sito di test alla produzione
 - **Anteprima** — Visualizza il form nel builder prima di pubblicare
 - **Template predefiniti** — 5 modelli pronti all'uso
 - **Integrazione WordPress** — Shortcode, blocco Gutenberg, widget classico
@@ -413,6 +414,23 @@ Per stili avanzati il CSS del frontend espone le variabili `--dbfb-bg`, `--dbfb-
 ### Duplicare un form
 Lista form > Duplica
 
+### Esportare e importare un form (2.18.0+)
+Per portare un form da un sito all'altro, per esempio dal sito di test alla produzione:
+
+1. Sul sito di origine, nella lista dei form, clicca **"Esporta"**: scarichi un file `.json` con titolo, campi e impostazioni.
+2. Sul sito di destinazione, nella lista dei form, apri **"Importa un form da file"**, scegli il file e premi **"Importa"**.
+3. Usa nelle pagine il **nuovo shortcode** mostrato nell'avviso: l'import crea sempre un form nuovo, con un ID diverso, e non modifica mai i form esistenti. Se esiste già un form con lo stesso titolo, il nuovo prende il suffisso "(importato)".
+
+Cosa succede durante l'import:
+- **Indirizzi riscritti:** gli URL del sito di origine (informativa privacy, redirect, immagini, link dei consensi facoltativi) diventano quelli del sito di destinazione.
+- **ID dei campi conservati:** i segnaposto `{campo:id}` delle email continuano a funzionare.
+- **Documenti della conferma:** si ricollegano se nella Media Library del sito di destinazione c'è un file allo stesso indirizzo; altrimenti un avviso indica quanti vanno ricaricati.
+- **Webhook disattivato:** il secret HMAC non viene mai esportato e l'URL può essere quello di test. Il webhook arriva spento: controlla URL e secret, poi riattivalo.
+- **Redirect:** se dopo la riscrittura non punta al sito di destinazione, viene sostituito dal messaggio di successo.
+- **Sicurezza:** campi e impostazioni ripassano dalla stessa sanitizzazione del salvataggio dal builder (HTML filtrato con `wp_kses_post`, tipi di campo sconosciuti scartati). File massimo 1 MB; servono i permessi di amministratore e il nonce. Il file non contiene risposte, consensi, allegati né altri dati personali.
+
+L'avviso dopo l'import elenca tutto ciò che è stato cambiato o va ricontrollato.
+
 ### Risposte
 Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 
@@ -430,6 +448,15 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.18.0 — Esporta / importa un form
+
+Nessuna migrazione dello schema, nessun cambiamento per i form esistenti.
+
+- **Esporta:** link "Esporta" nella lista dei form (`admin-post.php?action=dbfb_export_form`, nonce + `manage_options`): file `.json` con formato `dbfb-form` v1, titolo, campi, impostazioni e indirizzo del sito di origine. Il secret HMAC del webhook non viene esportato; i documenti della conferma sono esportati come URL invece che come ID della Media Library.
+- **Importa:** riquadro "Importa un form da file" nella lista (`admin-post.php?action=dbfb_import_form`, upload massimo 1 MB, nonce + `manage_options`). Crea sempre un form nuovo; avviso con il nuovo shortcode e l'elenco delle modifiche.
+- **Adattamento al sito di destinazione:** URL del sito di origine riscritti, documenti ricollegati per URL, webhook importato disattivato, redirect non valido sostituito dal messaggio di successo, titolo con "(importato)" se già presente.
+- **Sicurezza:** sanitizzazione identica al salvataggio dal builder (`DBFB_Builder::sanitize_fields()` / `sanitize_settings()`, ora pubbliche), whitelist dei tipi di campo, nuova classe `DBFB_Import_Export`.
 
 ### 2.17.0 — Provenienza delle campagne (UTM)
 
@@ -771,6 +798,7 @@ db-form-builder/
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)
 │   ├── class-attribution.php        # Provenienza della campagna: chiavi UTM, sanitizzazione, segnaposto (2.17.0+)
+│   ├── class-import-export.php      # Export / import di un form come file JSON (2.18.0+)
 │   ├── class-settings.php           # Impostazioni globali, test reCAPTCHA/email, cleanup AJAX
 │   ├── class-appearance.php         # Colori del frontend come variabili CSS (2.12.0+)
 │   ├── class-gdpr-compliance-notice.php # Avviso form senza consenso (2.10.0+)
