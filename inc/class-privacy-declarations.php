@@ -238,24 +238,24 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
             }
 
             $features = self::analyze_forms();
-            $global   = DB_Form_Builder::get_global_settings();
+            $global_settings = DB_Form_Builder::get_global_settings();
 
             /* ---- 1. Submissions storage (sempre se ci sono form) ----------- */
             // Se non ci sono form pubblicati, non c'è alcun trattamento attivo.
             // L'admin potrebbe aver disinstallato tutti i form ma lasciato il
             // plugin attivo: non dichiariamo trattamenti fantasma.
             if ($features['has_published_forms']) {
-                $register[] = self::build_submissions_entry($global, $features);
+                $register[] = self::build_submissions_entry($global_settings, $features);
             }
 
             /* ---- 2. Email notifications ----------------------------------- */
             if ($features['has_email']) {
-                $register[] = self::build_email_entry($global);
+                $register[] = self::build_email_entry($global_settings);
             }
 
             /* ---- 3. reCAPTCHA --------------------------------------------- */
             if ($features['has_recaptcha']) {
-                $register[] = self::build_recaptcha_entry($global);
+                $register[] = self::build_recaptcha_entry($global_settings);
             }
 
             /* ---- 4. Webhook ----------------------------------------------- */
@@ -331,8 +331,8 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
             // reCAPTCHA è una feature globale: serve solo se le chiavi sono
             // configurate. Se mancano, anche un form con enable_captcha=true
             // non lo carica realmente.
-            $global = DB_Form_Builder::get_global_settings();
-            $recaptcha_configured = !empty($global['recaptcha_site_key']) && !empty($global['recaptcha_secret_key']);
+            $global_settings = DB_Form_Builder::get_global_settings();
+            $recaptcha_configured = !empty($global_settings['recaptcha_site_key']) && !empty($global_settings['recaptcha_secret_key']);
 
             foreach ($forms as $form_id) {
                 $settings = get_post_meta($form_id, '_dbfb_settings', true);
@@ -397,9 +397,9 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
          * configurate, così l'admin vede SEMPRE quello che il plugin sta
          * realmente facendo nel registro privacy.
          */
-        private static function build_submissions_entry($global, $features = array()) {
-            $ip_mode = $global['ip_storage_mode'] ?? 'hashed';
-            $retention_days = (int) ($global['submissions_retention_days'] ?? 365);
+        private static function build_submissions_entry($global_settings, $features = array()) {
+            $ip_mode = $global_settings['ip_storage_mode'] ?? 'hashed';
+            $retention_days = (int) ($global_settings['submissions_retention_days'] ?? 365);
 
             $ip_label = self::ip_mode_label($ip_mode);
 
@@ -506,8 +506,8 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
         /**
          * Costruisce la voce per il trattamento "Notifiche email".
          */
-        private static function build_email_entry($global) {
-            $from_email = $global['from_email'] ?? get_option('admin_email');
+        private static function build_email_entry($global_settings) {
+            $from_email = $global_settings['from_email'] ?? get_option('admin_email');
 
             return array(
                 'id'             => 'dbfb_email_notifications',
@@ -532,8 +532,8 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
          * USA) che richiede menzione esplicita. Anche con Consent Mode,
          * lo script di Google viene caricato sul browser dell'utente.
          */
-        private static function build_recaptcha_entry($global) {
-            $version = $global['recaptcha_version'] ?? 'v2';
+        private static function build_recaptcha_entry($global_settings) {
+            $version = $global_settings['recaptcha_version'] ?? 'v2';
 
             return array(
                 'id'             => 'dbfb_recaptcha',

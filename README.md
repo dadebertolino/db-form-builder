@@ -449,6 +449,15 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 
 ## Changelog
 
+### 2.18.3 — PHPCS a zero warning
+
+Nessuna migrazione dello schema, nessun cambiamento per i form esistenti.
+
+- **Log solo in debug:** nuovo helper `DB_Form_Builder::debug_log()`, che scrive solo con `WP_DEBUG` attivo. I messaggi di reCAPTCHA (token vuoto, errore di rete, score basso) finivano nel log PHP anche in produzione; ora si comportano come gli altri log del plugin.
+- **Submission salvate con `wp_json_encode()`:** con un testo UTF-8 non valido, `json_encode()` restituiva `false` e la risposta veniva salvata vuota.
+- **Disinstallazione:** `wp_delete_file()` per i file di protezione della cartella `uploads/dbfb/`.
+- **Pulizia:** script del blocco Gutenberg registrato con `$in_footer` esplicito, parametro `$global` rinominato in `$global_settings`, eccezioni motivate annotate sulle operazioni dirette sul filesystem (file di protezione locali, export CSV, import JSON).
+
 ### 2.18.2 — Bonifica WPCS di sicurezza
 
 Nessuna migrazione dello schema, nessun cambiamento per i form esistenti.
