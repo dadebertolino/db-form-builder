@@ -189,22 +189,22 @@ if ($hard_delete) {
                 $sub_path = $dbfb_root . '/' . $sub;
                 if (!is_dir($sub_path)) continue;
                 // Pulisci solo file index.php (creato dal plugin, no contenuto).
-                @unlink($sub_path . '/index.php');
+                wp_delete_file($sub_path . '/index.php');
                 // rmdir fallisce silenziosamente se la cartella ha ancora file.
-                @rmdir($sub_path);
+                @rmdir($sub_path); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
             }
         }
         // Pulisci anche file di sicurezza alla root della cartella dbfb/.
-        @unlink($dbfb_root . '/.htaccess');
-        @unlink($dbfb_root . '/index.php');
-        @rmdir($dbfb_root);
+        wp_delete_file($dbfb_root . '/.htaccess');
+        wp_delete_file($dbfb_root . '/index.php');
+        @rmdir($dbfb_root); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
     }
 
     // 3.5 — Avviso allegati: se delete_submission_files NON ha potuto
     // cancellare alcuni file (path traversal sospetto, permessi, file già
     // mancanti), restano sul disco. Lo loggiamo solo in WP_DEBUG.
     if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log(sprintf(
+        error_log(sprintf( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- solo con WP_DEBUG.
             'DB Form Builder uninstall (2.4.0): hard delete eseguita. '
             . '%d file allegati cancellati. Eventuali file residui in '
             . 'wp-content/uploads/dbfb/ vanno verificati manualmente.',

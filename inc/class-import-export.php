@@ -267,7 +267,7 @@ class DBFB_Import_Export {
         }
 
         $result = $error === ''
-            ? self::import_json((string) file_get_contents($file['tmp_name']))
+            ? self::import_json((string) file_get_contents($file['tmp_name'])) // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- file caricato locale, non un URL.
             : new WP_Error('dbfb_import_upload', $error);
 
         $notice = is_wp_error($result)

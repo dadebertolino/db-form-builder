@@ -272,7 +272,7 @@ class DBFB_Submit {
 
         $result = $wpdb->insert($table, [
             'form_id' => $form_id,
-            'data' => json_encode($form_data),
+            'data' => wp_json_encode($form_data),
             'ip_address' => $ip_address_value,
             'ip_hash' => $ip_hash_value,
             'gdpr_consent_given'          => $gdpr_consent_given,
@@ -287,11 +287,11 @@ class DBFB_Submit {
         // $wpdb->insert_id, collegando la delivery alla submission sbagliata.
         $submission_id = ($result === false) ? 0 : (int) $wpdb->insert_id;
 
-        if ($result === false && defined('WP_DEBUG') && WP_DEBUG) {
+        if ($result === false) {
             // Loghiamo solo in debug per evitare di sporcare i log di
             // produzione. Il chiamante riceve comunque il success message,
             // ma chi sviluppa vede l'errore.
-            error_log('DB Form Builder: Errore inserimento DB - ' . $wpdb->last_error);
+            DB_Form_Builder::debug_log('Errore inserimento DB - ' . $wpdb->last_error);
         }
 
         // Email
@@ -668,7 +668,7 @@ class DBFB_Submit {
 
     private static function verify_recaptcha($token, $secret_key) {
         if (empty($token)) {
-            error_log('DB Form Builder: reCAPTCHA token vuoto');
+            DB_Form_Builder::debug_log('reCAPTCHA token vuoto');
             return false;
         }
 
@@ -682,19 +682,19 @@ class DBFB_Submit {
         ]);
 
         if (is_wp_error($response)) {
-            error_log('DB Form Builder: Errore reCAPTCHA - ' . $response->get_error_message());
+            DB_Form_Builder::debug_log('Errore reCAPTCHA - ' . $response->get_error_message());
             return false;
         }
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
         if (empty($body)) {
-            error_log('DB Form Builder: Risposta reCAPTCHA vuota');
+            DB_Form_Builder::debug_log('Risposta reCAPTCHA vuota');
             return false;
         }
 
         if (isset($body['score'])) {
             $valid = !empty($body['success']) && $body['score'] >= 0.5;
-            if (!$valid) error_log('DB Form Builder: reCAPTCHA score basso: ' . ($body['score'] ?? 'N/A'));
+            if (!$valid) DB_Form_Builder::debug_log('reCAPTCHA score basso: ' . ($body['score'] ?? 'N/A'));
             return $valid;
         }
 
@@ -826,7 +826,7 @@ class DBFB_Submit {
                 }
 
                 // Set proper permissions
-                @chmod($dest_path, 0644);
+                @chmod($dest_path, 0644); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- file appena caricato, best effort.
 
                 $urls[] = [
                     'url' => $upload_dir['url'] . '/' . $safe_name,
@@ -869,7 +869,7 @@ class DBFB_Submit {
         // index.php nella sottocartella del form per prevenire il listing.
         $index = $base_dir . '/index.php';
         if (!file_exists($index)) {
-            @file_put_contents($index, '<?php // Silence is golden.');
+            @file_put_contents($index, '<?php // Silence is golden.'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- file di protezione locale, best effort.
         }
 
         return [
@@ -919,6 +919,9 @@ class DBFB_Submit {
                   . "    Deny from all\n"
                   . "</IfModule>\n";
 
+        // File di protezione locali in uploads/dbfb/: WP_Filesystem chiederebbe
+        // credenziali FTP su alcuni hosting, qui basta il best effort.
+        // phpcs:disable WordPress.WP.AlternativeFunctions
         $current = file_exists($htaccess) ? (string) @file_get_contents($htaccess) : '';
         $ok = true;
         if (strpos($current, 'Security (' . self::UPLOADS_PROTECTION_VERSION . ')') === false) {
@@ -929,6 +932,7 @@ class DBFB_Submit {
         if (!file_exists($index)) {
             @file_put_contents($index, '<?php // Silence is golden.');
         }
+        // phpcs:enable WordPress.WP.AlternativeFunctions
 
         return $ok;
     }

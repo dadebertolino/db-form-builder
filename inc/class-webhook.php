@@ -200,9 +200,7 @@ if (!class_exists('DBFB_Webhook')) {
             );
 
             if (!$inserted) {
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('DB Form Builder Webhook: enqueue fallito - ' . $wpdb->last_error);
-                }
+                DB_Form_Builder::debug_log('Webhook: enqueue fallito - ' . $wpdb->last_error);
                 return false;
             }
 
@@ -345,9 +343,7 @@ if (!class_exists('DBFB_Webhook')) {
                     array('%s', '%d', '%s', '%d', '%s', '%s'),
                     array('%d')
                 );
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log("DB Form Builder Webhook: delivery $delivery_id morta dopo $attempts tentativi - $error_msg");
-                }
+                DB_Form_Builder::debug_log("Webhook: delivery $delivery_id morta dopo $attempts tentativi - $error_msg");
                 return;
             }
 

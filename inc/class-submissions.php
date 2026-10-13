@@ -200,7 +200,7 @@ class DBFB_Submissions {
             fputcsv($output, array_map(array(__CLASS__, 'csv_escape'), $row), ';');
         }
 
-        fclose($output);
+        fclose($output); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- stream php://output del CSV.
         exit;
     }
 
