@@ -449,6 +449,13 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 
 ## Changelog
 
+### 2.18.1 — Manutenzione della CI
+
+Nessun cambiamento al codice del plugin.
+
+- **Runner fissato a `ubuntu-24.04`** in CI e Release (era `ubuntu-latest`, che dal 19/10/2026 passa a Ubuntu 26).
+- **Action su Node 24:** `actions/checkout` v4 → v7, `softprops/action-gh-release` v2 → v3; niente più avviso di deprecazione di Node 20.
+
 ### 2.18.0 — Esporta / importa un form
 
 Nessuna migrazione dello schema, nessun cambiamento per i form esistenti.
