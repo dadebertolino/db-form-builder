@@ -644,3 +644,20 @@
     color: #b32d2e;
     min-height: 24px;
 }
+
+/* =========================================================
+   Import form (2.18.0)
+   ========================================================= */
+.dbfb-import-box {
+    margin: 0 0 16px;
+    padding: 10px 14px;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+}
+
+.dbfb-import-box summary {
+    cursor: pointer;
+    font-weight: 600;
+    min-height: 24px;
+}

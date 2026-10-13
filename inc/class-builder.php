@@ -115,7 +115,8 @@ class DBFB_Builder {
         wp_send_json_success(['form_id' => $form_id, 'message' => 'Form salvato con successo!']);
     }
 
-    private static function sanitize_fields($fields) {
+    // 2.18.0: pubblica, usata anche dall'import (DBFB_Import_Export).
+    public static function sanitize_fields($fields) {
         $sanitized = [];
         foreach ($fields as $field) {
             $sf = [
@@ -183,7 +184,8 @@ class DBFB_Builder {
         return $sanitized;
     }
 
-    private static function sanitize_settings($settings) {
+    // 2.18.0: pubblica, usata anche dall'import (DBFB_Import_Export).
+    public static function sanitize_settings($settings) {
         return [
             'submit_text' => sanitize_text_field($settings['submit_text'] ?? 'Invia'),
             'success_message' => wp_kses_post($settings['success_message'] ?? ''),
