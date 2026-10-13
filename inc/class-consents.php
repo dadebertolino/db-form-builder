@@ -210,6 +210,7 @@ class DBFB_Consents {
         foreach (array_chunk($ids, 500) as $chunk) {
             $in = implode(',', array_fill(0, count($chunk), '%d'));
             $rows = $wpdb->get_results($wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $in.
                 'SELECT * FROM ' . self::table() . " WHERE submission_id IN ($in) ORDER BY id ASC",
                 $chunk
             ));
@@ -342,6 +343,7 @@ class DBFB_Consents {
         global $wpdb;
         $in = implode(',', array_fill(0, count($consent_ids), '%d'));
         $rows = $wpdb->get_results($wpdb->prepare(
+            // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $in.
             'SELECT * FROM ' . self::table() . " WHERE id IN ($in) AND given = 1 AND revoked_at IS NULL",
             $consent_ids
         ));
@@ -443,7 +445,7 @@ class DBFB_Consents {
         if ($is_post) {
             // phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- confrontati solo come host.
             $origin = !empty($_SERVER['HTTP_ORIGIN']) ? wp_unslash($_SERVER['HTTP_ORIGIN']) : (!empty($_SERVER['HTTP_REFERER']) ? wp_unslash($_SERVER['HTTP_REFERER']) : '');
-            // phpcs:enable
+            // phpcs:enable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
             if (!DBFB_Submit::origin_matches($origin, [home_url(), site_url(), admin_url()])) {
                 wp_die(esc_html__('Richiesta non valida: apri di nuovo il link dall\'email e riprova.', 'db-form-builder'), esc_html($title), ['response' => 403]);
             }
@@ -485,7 +487,8 @@ class DBFB_Consents {
         $html .= '</fieldset>';
         $html .= '<p><button type="submit" class="button button-primary" style="min-height:44px;padding:0 20px">' . esc_html__('Revoca i consensi selezionati', 'db-form-builder') . '</button></p>';
         $html .= '</form>';
-        wp_die($html, esc_html($title), ['response' => 200]);
+        wp_die($html, esc_html($title), ['response' => 200]); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $html composto da parti già escapate.
+        // phpcs:enable WordPress.Security.NonceVerification
     }
 
     /**
@@ -538,6 +541,7 @@ class DBFB_Consents {
         global $wpdb;
         foreach (array_chunk($ids, 500) as $chunk) {
             $in = implode(',', array_fill(0, count($chunk), '%d'));
+            // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $in.
             $wpdb->query($wpdb->prepare('DELETE FROM ' . self::table() . " WHERE submission_id IN ($in)", $chunk));
         }
     }
@@ -562,6 +566,7 @@ class DBFB_Consents {
         foreach (array_chunk($ids, 500) as $chunk) {
             $in = implode(',', array_fill(0, count($chunk), '%d'));
             $wpdb->query($wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $in.
                 'DELETE FROM ' . self::table() . " WHERE submission_id IN ($in) AND (given = 0 OR revoked_at IS NOT NULL)",
                 $chunk
             ));

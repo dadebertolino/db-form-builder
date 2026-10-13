@@ -80,8 +80,10 @@ if (!class_exists('DBFB_GDPR_Compliance_Notice')) {
          * @return bool
          */
         private static function is_dbfb_admin_page() {
+            // Solo per decidere se mostrare l'avviso: nessuna modifica.
+            // phpcs:ignore WordPress.Security.NonceVerification.Recommended
             if (!isset($_GET['page'])) return false;
-            $page = (string) $_GET['page'];
+            $page = sanitize_key(wp_unslash($_GET['page'])); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
             return strpos($page, 'dbfb-') === 0;
         }
 

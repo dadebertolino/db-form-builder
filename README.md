@@ -449,6 +449,16 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 
 ## Changelog
 
+### 2.18.2 — Bonifica WPCS di sicurezza
+
+Nessuna migrazione dello schema, nessun cambiamento per i form esistenti.
+
+- **Fix apostrofi nelle impostazioni globali:** nome mittente, email e chiavi reCAPTCHA venivano salvati senza `wp_unslash()`, quindi "Dell'Arte" diventava "Dell\'Arte" nelle email. Corretto anche nell'email di prova. I valori già salvati con la barra vanno corretti e salvati di nuovo dalle Impostazioni.
+- **Input:** `wp_unslash()` + sanitizzazione su tutti i `$_POST` / `$_GET` / `$_SERVER` letti da builder, impostazioni, azioni admin, invio del form e rilevamento IP; nonce sanificati prima di `wp_verify_nonce()`.
+- **Confronti stretti:** `in_array(..., true)` su operatori delle condizioni, campi nascosti ed estensioni degli upload (in PHP 7.4 `0 == 'equals'` era vero).
+- **Output e redirect:** `esc_html__()` nei `wp_die()`, `esc_html_e()` nel widget, `wp_safe_redirect()` per i redirect dell'admin.
+- **CI:** le regole di sicurezza WPCS (`EscapeOutput`, `NonceVerification`, `ValidatedSanitizedInput`) passano da warning a **error**: una nuova violazione blocca la PR. Le eccezioni motivate sono annotate nel codice.
+
 ### 2.18.1 — Manutenzione della CI
 
 Nessun cambiamento al codice del plugin.

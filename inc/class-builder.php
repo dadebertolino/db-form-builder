@@ -69,7 +69,7 @@ class DBFB_Builder {
 
         $form_settings = wp_parse_args($form_settings, $default_settings);
         $templates = self::get_templates();
-        $show_templates = (empty($form_id) || $form_id == 0);
+        $show_templates = empty($form_id);
 
         include DBFB_PLUGIN_DIR . 'templates/admin/form-builder.php';
     }
@@ -85,9 +85,12 @@ class DBFB_Builder {
         }
 
         $form_id = intval($_POST['form_id'] ?? 0);
-        $title = sanitize_text_field($_POST['title'] ?? '');
-        $fields = json_decode(stripslashes($_POST['fields'] ?? '[]'), true);
-        $settings = json_decode(stripslashes($_POST['settings'] ?? '{}'), true);
+        $title = sanitize_text_field(wp_unslash($_POST['title'] ?? ''));
+        // JSON grezzo: sanitizzato campo per campo da sanitize_fields() / sanitize_settings().
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+        $fields = json_decode(wp_unslash($_POST['fields'] ?? '[]'), true);
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+        $settings = json_decode(wp_unslash($_POST['settings'] ?? '{}'), true);
 
         $sanitized_fields = self::sanitize_fields($fields);
         $sanitized_settings = self::sanitize_settings($settings);
@@ -100,11 +103,12 @@ class DBFB_Builder {
         }
 
         if ($form_id > 0) {
-            wp_update_post(['ID' => $form_id, 'post_title' => $title]);
+            // wp_update_post() / wp_insert_post() si aspettano dati con slash.
+            wp_update_post(['ID' => $form_id, 'post_title' => wp_slash($title)]);
         } else {
             $form_id = wp_insert_post([
                 'post_type' => 'dbfb_form',
-                'post_title' => $title,
+                'post_title' => wp_slash($title),
                 'post_status' => 'publish',
             ]);
         }
@@ -149,15 +153,15 @@ class DBFB_Builder {
                     foreach ($conditions['rules'] as $rule) {
                         $sanitized_rules[] = [
                             'field' => sanitize_key($rule['field'] ?? ''),
-                            'operator' => in_array($rule['operator'] ?? '', ['equals','not_equals','contains','not_contains','empty','not_empty','greater_than','less_than']) ? $rule['operator'] : 'equals',
+                            'operator' => in_array($rule['operator'] ?? '', ['equals','not_equals','contains','not_contains','empty','not_empty','greater_than','less_than'], true) ? $rule['operator'] : 'equals',
                             'value' => sanitize_text_field($rule['value'] ?? ''),
                         ];
                     }
                 }
                 $sf['conditions'] = [
                     'enabled' => !empty($conditions['enabled']),
-                    'action' => in_array($conditions['action'] ?? '', ['show', 'hide']) ? $conditions['action'] : 'show',
-                    'logic' => in_array($conditions['logic'] ?? '', ['all', 'any']) ? $conditions['logic'] : 'all',
+                    'action' => in_array($conditions['action'] ?? '', ['show', 'hide'], true) ? $conditions['action'] : 'show',
+                    'logic' => in_array($conditions['logic'] ?? '', ['all', 'any'], true) ? $conditions['logic'] : 'all',
                     'rules' => $sanitized_rules,
                 ];
             }

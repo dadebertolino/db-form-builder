@@ -75,19 +75,17 @@
         <exclude name="Squiz.PHP.DisallowMultipleAssignments"/>
     </rule>
 
-    <!-- Sicurezza: al momento segnalata come warning (non bloccante) perché
-         il codice esistente ha debito WPCS preesistente (unslash/sanitize su
-         input, escaping output) che verrà normalizzato in un intervento
-         dedicato. Il workflow tratta i warning come informativi: la CI passa
-         ma le violazioni restano visibili nel log. Alzare a error dopo la
-         bonifica per rendere il gate vincolante sul codice nuovo. -->
+    <!-- Sicurezza: bloccante (error) dalla 2.18.2, dopo la bonifica del
+         debito WPCS su unslash/sanitize, nonce ed escaping. Le eccezioni
+         motivate sono annotate nel codice con phpcs:ignore / phpcs:disable.
+         I template in templates/ restano fuori scope (vedi sopra). -->
     <rule ref="WordPress.Security.EscapeOutput">
-        <type>warning</type>
+        <type>error</type>
     </rule>
     <rule ref="WordPress.Security.NonceVerification">
-        <type>warning</type>
+        <type>error</type>
     </rule>
     <rule ref="WordPress.Security.ValidatedSanitizedInput">
-        <type>warning</type>
+        <type>error</type>
     </rule>
 </ruleset>
