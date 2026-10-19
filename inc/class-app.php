@@ -311,6 +311,21 @@ class DBFB_App {
             'notFound'       => __('Risposta non trovata: potrebbe essere stata eliminata.', 'db-form-builder'),
             'rateLimited'    => __('Troppe richieste in poco tempo. Riprova tra un minuto.', 'db-form-builder'),
             'linkExpires'    => __('I link agli allegati scadono dopo 15 minuti: ricarica la pagina per generarne di nuovi.', 'db-form-builder'),
+            // 2.22.0: aggiornamenti e notifiche.
+            'newArrived'     => __('Sono arrivate nuove risposte.', 'db-form-builder'),
+            'showNew'        => __('Mostra le nuove risposte', 'db-form-builder'),
+            'notifications'  => __('Notifiche', 'db-form-builder'),
+            'pushOff'        => __('Ricevi un avviso su questo dispositivo quando arriva una risposta.', 'db-form-builder'),
+            'pushOn'         => __('Le notifiche sono attive su questo dispositivo.', 'db-form-builder'),
+            'pushEnable'     => __('Attiva le notifiche', 'db-form-builder'),
+            'pushDisable'    => __('Disattiva', 'db-form-builder'),
+            'pushTest'       => __('Invia una prova', 'db-form-builder'),
+            'pushTestSent'   => __('Notifica di prova inviata.', 'db-form-builder'),
+            'pushTestFailed' => __('Invio non riuscito. Prova a disattivare e riattivare le notifiche.', 'db-form-builder'),
+            'pushDenied'     => __('Le notifiche sono bloccate per questo sito nelle impostazioni del browser.', 'db-form-builder'),
+            'pushUnsupported' => __('Questo browser non supporta le notifiche push.', 'db-form-builder'),
+            'pushIos'        => __('Su iPhone e iPad le notifiche funzionano solo con l\'app aggiunta alla schermata Home: tocca Condividi → "Aggiungi alla schermata Home" e apri l\'app da lì.', 'db-form-builder'),
+            'pushError'      => __('Non è stato possibile attivare le notifiche. Riprova.', 'db-form-builder'),
         );
     }
 
@@ -356,6 +371,9 @@ class DBFB_App {
         $app_url    = self::url();
         $pretty     = self::has_pretty_permalinks();
         $role_name  = __('Gestore form', 'db-form-builder');
+        // 2.22.0: notifiche.
+        $notify         = DBFB_Notifications::settings();
+        $push_supported = DBFB_Web_Push::is_supported();
         include DBFB_PLUGIN_DIR . 'templates/admin/app.php';
     }
 }

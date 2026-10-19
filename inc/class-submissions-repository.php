@@ -317,6 +317,17 @@ class DBFB_Submissions_Repository {
     }
 
     /**
+     * Id della risposta più recente, 0 se non ce ne sono (2.22.0, polling).
+     *
+     * @return int
+     */
+    public static function latest_id() {
+        global $wpdb;
+        $table = self::table();
+        return (int) $wpdb->get_var("SELECT MAX(id) FROM $table");
+    }
+
+    /**
      * Risposte per giorno e per form negli ultimi N giorni (2.20.0).
      *
      * Il giorno è quello di submitted_at, cioè l'orologio del database

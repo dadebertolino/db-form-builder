@@ -456,6 +456,23 @@ h2 {
     min-height: 44px;
 }
 
+.push-card {
+    margin-top: 16px;
+    padding: 4px 16px 8px;
+}
+
+.push-card[hidden] {
+    display: none;
+}
+
+.push-card h2 {
+    margin-top: 12px;
+}
+
+.new-btn {
+    margin: 4px 0 12px;
+}
+
 .note {
     color: var(--muted);
     font-size: 13px;

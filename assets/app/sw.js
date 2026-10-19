@@ -9,6 +9,9 @@
  *    copia in cache usata solo offline.
  * Tutto il resto (API REST, admin-ajax, allegati, login) passa dalla rete
  * senza essere salvato: le risposte ai form non restano mai sul dispositivo.
+ *
+ * 2.22.0: mostra le notifiche push e al clic apre (o porta in primo piano)
+ * l'app sulla vista indicata.
  */
 /* global self, caches, fetch, Response, URL */
 (function () {
@@ -68,5 +71,41 @@
             );
         }
         // Ogni altra richiesta: nessun respondWith, nessuna cache.
+    });
+
+    // ---- Notifiche push (2.22.0) ----
+    // Il payload (cifrato dal server) contiene solo titolo, testo generico,
+    // link e tag: nessun dato delle risposte.
+    self.addEventListener('push', function (event) {
+        var data = {};
+        try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+        var url = new URL(data.url || SHELL, self.location.href);
+        // Solo link all'app di questo sito.
+        if (url.origin !== self.location.origin) url = new URL(SHELL);
+        var options = {
+            body: data.body || '',
+            tag: data.tag || 'dbfb',
+            renotify: true,
+            icon: ASSETS.filter(function (u) { return u.indexOf('icon-192') !== -1; })[0],
+            data: { url: url.href }
+        };
+        var badge = self.navigator && 'setAppBadge' in self.navigator ? self.navigator.setAppBadge().catch(function () {}) : Promise.resolve();
+        event.waitUntil(Promise.all([self.registration.showNotification(data.title || 'Nuova risposta', options), badge]));
+    });
+
+    self.addEventListener('notificationclick', function (event) {
+        event.notification.close();
+        var target = (event.notification.data && event.notification.data.url) || SHELL;
+        event.waitUntil(
+            self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+                for (var i = 0; i < list.length; i++) {
+                    var client = list[i];
+                    if (client.url.indexOf(SHELL) === 0 && 'focus' in client) {
+                        return client.focus().then(function (c) { return c && 'navigate' in c ? c.navigate(target) : c; });
+                    }
+                }
+                return self.clients.openWindow(target);
+            })
+        );
     });
 }());

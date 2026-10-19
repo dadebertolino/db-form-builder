@@ -16,6 +16,8 @@
  *      dbfb_backfill_subject_hash (2.19.0)
  *    - Rimuove la capability dbfb_view_submissions e il ruolo "Gestore
  *      form" (2.20.0)
+ *    - Rimuove impostazioni delle notifiche, chiavi VAPID e sottoscrizioni
+ *      push degli utenti (2.22.0)
  *    - Pulisce i transient dbfb_rate_*
  *    - LASCIA INTATTI: tabelle submissions e webhook deliveries, post type
  *      dbfb_form + relativi post meta, allegati in uploads/dbfb/
@@ -102,6 +104,17 @@ delete_option('dbfb_roles_version');
 // 2.21.0: le regole di rewrite di /dbfb-app/ spariscono al prossimo flush;
 // togliendo il marcatore, una reinstallazione le registra di nuovo.
 delete_option('dbfb_app_rewrite_version');
+
+// 2.22.0: notifiche. Chiavi VAPID, impostazioni (con i token ntfy/Telegram),
+// sottoscrizioni push di tutti gli utenti, invii in coda.
+delete_option('dbfb_notifications');
+delete_option('dbfb_vapid_keys');
+delete_metadata('user', 0, 'dbfb_push_subscriptions', '', true);
+if (function_exists('wp_unschedule_hook')) {
+    wp_unschedule_hook('dbfb_notify_dispatch');
+} else {
+    wp_clear_scheduled_hook('dbfb_notify_dispatch');
+}
 
 // 2.3 — Transient di rate limit. dbfb_rate_* sono creati con set_transient
 // a runtime, quindi vivono in wp_options come _transient_dbfb_rate_*.

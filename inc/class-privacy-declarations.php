@@ -268,6 +268,12 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 $register[] = self::build_marketing_entry($features);
             }
 
+            /* ---- 6. Notifiche al personale (2.22.0) ----------------------- */
+            $notifications = class_exists('DBFB_Notifications') ? DBFB_Notifications::privacy_entry() : null;
+            if ($notifications) {
+                $register[] = $notifications;
+            }
+
             return $register;
         }
 

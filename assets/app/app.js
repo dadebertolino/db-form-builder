@@ -9,6 +9,9 @@
  * I dati arrivano solo dalle API dbfb/v1 (cookie + nonce wp_rest) e non
  * vengono salvati sul dispositivo: in localStorage resta solo la scelta del
  * tema. Il DOM si costruisce con textContent, mai con innerHTML.
+ *
+ * 2.22.0: polling di GET /updates mentre l'app è in primo piano, badge
+ * sull'icona (Badging API), notifiche push attivabili per dispositivo.
  */
 (function () {
     'use strict';
@@ -29,6 +32,12 @@
 
     var nonce = '';
     var renderToken = 0;
+    // Render di aggiornamento (polling): niente "Caricamento…" né spostamento del focus.
+    var quiet = false;
+    // Dati di GET /me (notifiche, intervallo di polling).
+    var me = null;
+    var latestId = 0;
+    var pollTimer = null;
     // Titoli dei form, per l'intestazione delle liste filtrate.
     var formTitles = {};
 
@@ -159,7 +168,7 @@
         document.title = (opts.docTitle ? opts.docTitle + ' — ' : '') + S.appTitle + ' — ' + C.siteName;
         // Focus sul titolo della vista (WCAG 2.4.3).
         var heading = main.querySelector('h1');
-        if (heading && opts.focus !== false) heading.focus();
+        if (heading && opts.focus !== false && !quiet) heading.focus();
     }
 
     function loadingView() {
@@ -216,12 +225,15 @@
                     )
                 )
             );
+            var pushCard = h('section', { 'class': 'card push-card', id: 'push-card', 'aria-labelledby': 'push-title', hidden: true });
             setView({}, [
                 h('h1', { tabindex: '-1', text: S.allForms }),
                 h('p', { 'class': 'subtitle', text: C.siteName }),
                 forms.length ? all : null,
-                forms.length ? h('ul', { 'class': 'list' }, items) : h('div', { 'class': 'state' }, h('p', { text: S.noForms }))
+                forms.length ? h('ul', { 'class': 'list' }, items) : h('div', { 'class': 'state' }, h('p', { text: S.noForms })),
+                pushCard
             ]);
+            updatePushCard(pushCard);
         });
     }
 
@@ -411,12 +423,13 @@
         return { seg: seg, params: params };
     }
 
-    function render() {
+    function render(silent) {
         var token = ++renderToken;
         var route = parseHash();
         var seg = route.seg;
         var run;
-        loadingView();
+        quiet = silent === true;
+        if (!quiet) loadingView();
 
         if (seg[0] === 'f' && /^\d+$/.test(seg[1] || '')) {
             var status = route.params.get('status') || '';
@@ -428,10 +441,161 @@
             run = function () { return viewForms(token); };
         }
 
-        run().catch(function (err) {
+        run().then(function () { quiet = false; }, function (err) {
+            quiet = false;
             if (token !== renderToken) return;
             errorView(err, render);
         });
+    }
+
+    // =========================================================
+    // Aggiornamenti (polling) e badge
+    // =========================================================
+
+    function setBadge(n) {
+        if (!('setAppBadge' in navigator)) return;
+        var p = n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge();
+        if (p && p.catch) p.catch(function () { /* non supportato in questo contesto */ });
+    }
+
+    function onNewSubmissions() {
+        announce(S.newArrived);
+        var seg = parseHash().seg;
+        if (seg.length === 0) {
+            render(true);
+        } else if (seg[0] === 'f' && !document.getElementById('app-new')) {
+            // Nella lista non si sposta il contenuto: un pulsante per aggiornare.
+            var heading = main.querySelector('h1');
+            var btn = h('button', { type: 'button', 'class': 'btn primary new-btn', id: 'app-new', text: S.showNew, onclick: function () { render(); } });
+            if (heading) heading.insertAdjacentElement('afterend', btn);
+        }
+    }
+
+    function poll() {
+        if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+        api('updates').then(function (res) {
+            var d = res.data || {};
+            setBadge(d.new_total || 0);
+            if (latestId && d.latest_id > latestId) onNewSubmissions();
+            latestId = Math.max(latestId, d.latest_id || 0);
+        }).catch(function () { /* si riprova al prossimo giro */ });
+    }
+
+    function startPolling() {
+        if (pollTimer) return;
+        var seconds = (me && me.notifications && me.notifications.poll_interval) || 15;
+        poll();
+        pollTimer = window.setInterval(poll, seconds * 1000);
+    }
+
+    // In background il polling si ferma da solo (poll() esce); al ritorno
+    // in primo piano si controlla subito.
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') poll();
+    });
+
+    // =========================================================
+    // Notifiche push
+    // =========================================================
+
+    function urlB64ToUint8Array(b64) {
+        var pad = '='.repeat((4 - b64.length % 4) % 4);
+        var raw = window.atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+        var out = new Uint8Array(raw.length);
+        for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+        return out;
+    }
+
+    function pushSupported() {
+        return !!(C.swUrl && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+    }
+
+    function isIos() {
+        return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function currentSubscription() {
+        if (!pushSupported()) return Promise.resolve(null);
+        return navigator.serviceWorker.getRegistration(C.swScope || undefined).then(function (reg) {
+            return reg ? reg.pushManager.getSubscription() : null;
+        });
+    }
+
+    function subscribePush() {
+        var ask = Notification.requestPermission();
+        return Promise.resolve(ask).then(function (perm) {
+            if (perm !== 'granted') throw new Error('denied');
+            return navigator.serviceWorker.ready;
+        }).then(function (reg) {
+            return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(me.notifications.vapid_key) });
+        }).then(function (sub) {
+            var j = sub.toJSON();
+            return api('push/subscription', { method: 'POST', body: { endpoint: j.endpoint, keys: j.keys } });
+        });
+    }
+
+    function unsubscribePush() {
+        return currentSubscription().then(function (sub) {
+            if (!sub) return null;
+            return api('push/subscription', { method: 'DELETE', body: { endpoint: sub.endpoint } })
+                .catch(function () { /* la sottoscrizione si annulla comunque sul dispositivo */ })
+                .then(function () { return sub.unsubscribe(); });
+        });
+    }
+
+    function updatePushCard(card) {
+        if (!card || !me || !me.notifications || !me.notifications.push) return;
+        var body = h('div');
+        card.textContent = '';
+        card.appendChild(h('h2', { id: 'push-title', text: S.notifications }));
+        card.appendChild(body);
+        card.hidden = false;
+
+        function message(text) { body.appendChild(h('p', { 'class': 'muted', text: text })); }
+        function busy(btn, fn) {
+            return function () {
+                btn.disabled = true;
+                fn().then(function () { updatePushCard(card); }, function (err) {
+                    btn.disabled = false;
+                    if (err instanceof AuthError) { errorView(err); return; }
+                    announce(err && err.message === 'denied' ? S.pushDenied : S.pushError);
+                    updatePushCard(card);
+                });
+            };
+        }
+
+        if (!pushSupported()) {
+            var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+            message(isIos() && !standalone ? S.pushIos : S.pushUnsupported);
+            return;
+        }
+        if (Notification.permission === 'denied') {
+            message(S.pushDenied);
+            return;
+        }
+        currentSubscription().then(function (sub) {
+            var actions = h('div', { 'class': 'actions' });
+            if (sub) {
+                message(S.pushOn);
+                var test = h('button', { type: 'button', 'class': 'btn', text: S.pushTest });
+                test.addEventListener('click', function () {
+                    test.disabled = true;
+                    api('push/test', { method: 'POST' }).then(function (r) {
+                        announce(r.data.sent > 0 ? S.pushTestSent : S.pushTestFailed);
+                    }, function () { announce(S.pushTestFailed); }).then(function () { test.disabled = false; });
+                });
+                var off = h('button', { type: 'button', 'class': 'btn', text: S.pushDisable });
+                off.addEventListener('click', busy(off, unsubscribePush));
+                actions.appendChild(test);
+                actions.appendChild(off);
+            } else {
+                message(S.pushOff);
+                var on = h('button', { type: 'button', 'class': 'btn primary', text: S.pushEnable });
+                on.addEventListener('click', busy(on, subscribePush));
+                actions.appendChild(on);
+            }
+            body.appendChild(actions);
+        }).catch(function () { message(S.pushUnsupported); });
     }
 
     // =========================================================
@@ -476,14 +640,24 @@
     // Utente e link di logout (con nonce di sessione: mai nella shell in cache).
     function loadMe() {
         api('me').then(function (res) {
-            userEl.textContent = res.data.name || '';
-            if (res.data.logout_url) {
-                logoutLink.href = res.data.logout_url;
+            me = res.data;
+            userEl.textContent = me.name || '';
+            if (me.logout_url) {
+                logoutLink.href = me.logout_url;
                 logoutLink.hidden = false;
             }
+            updatePushCard(document.getElementById('push-card'));
+            startPolling();
         }).catch(function () { /* gestito dalla vista; si riprova al ritorno online */ });
     }
     loadMe();
+
+    // Logout: prima si revoca la sottoscrizione push di questo dispositivo.
+    logoutLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        var go = function () { setBadge(0); window.location.href = logoutLink.href; };
+        unsubscribePush().then(go, go);
+    });
 
     if (C.swUrl && 'serviceWorker' in navigator) {
         navigator.serviceWorker.register(C.swUrl, { scope: C.swScope }).catch(function () { /* l'app funziona anche senza */ });

@@ -197,6 +197,16 @@ Un'app installabile (PWA) per consultare le risposte da smartphone o PC, all'ind
 
 **Privacy:** il service worker tiene in cache solo l'interfaccia (HTML, CSS, JavaScript, icone). La shell HTML non contiene dati personali né nonce: utente, form e risposte arrivano dalle API a ogni apertura e non vengono salvati sul dispositivo. Sul dispositivo resta solo la scelta del tema (localStorage). La shell non carica `wp_head()`, quindi nessuno script del tema o di altri plugin, e ha una Content Security Policy che consente script, stili e connessioni solo verso il sito.
 
+### Aggiornamenti e notifiche (2.22.0+)
+
+- **Aggiornamento automatico:** con l'app aperta e in primo piano, ogni 15 secondi (regolabile da 10 a 300) l'app chiede al sito solo l'id dell'ultima risposta e il numero di nuove (`GET /updates`). Nell'elenco dei form i conteggi si aggiornano da soli; in una lista compare il pulsante "Mostra le nuove risposte", così il contenuto non si sposta mentre lo leggi. In background il controllo si ferma.
+- **Badge sull'icona** dell'app installata con il numero di risposte nuove, dove il sistema lo supporta (Badging API).
+- **Notifiche push:** ogni utente le attiva dalla scheda "Notifiche" della web app, sul singolo dispositivo, e da lì può inviarsi una prova. Su iPhone e iPad servono iOS 16.4 o successivo e l'app aggiunta alla schermata Home. Uscendo dall'app la sottoscrizione del dispositivo viene revocata. Il Web Push è implementato nel plugin senza librerie esterne (VAPID + cifratura RFC 8291 con OpenSSL di PHP): niente Composer e niente estensioni gmp o bcmath.
+- **ntfy e Telegram** come alternativa (Form Builder → Web app → Notifiche): utili dove il push non arriva, per esempio iOS senza app installata. Pulsante "Invia una notifica di prova".
+- **Contenuto minimo:** "Nuova risposta", il titolo del form (disattivabile) e il link all'app. Mai i dati della risposta. Il payload push è cifrato per il singolo dispositivo; i push service ammessi sono solo quelli dei browser (Google, Mozilla, Apple, Microsoft; filter `dbfb_push_allowed_hosts`).
+- L'invio parte da un evento cron avviato subito dopo il salvataggio, così chi compila il form non aspetta.
+- I canali attivi sono dichiarati nel registro dei trattamenti del DB Privacy Hub (voce "Notifiche al personale sulle nuove risposte").
+
 **Cache di pagina:** `/dbfb-app/` invia header `no-store` e definisce `DONOTCACHEPAGE` (WP Rocket, W3 Total Cache, WP Super Cache, LiteSpeed Cache). Con una CDN o una cache del server configurata a parte, escludi il percorso `/dbfb-app/`.
 
 **Permalink:** con la struttura "Semplice" l'app funziona su `?dbfb_app=shell`, ma non si installa né parte offline (il service worker non viene registrato).
@@ -212,7 +222,10 @@ Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
 | `GET` | `/wp-json/dbfb/v1/submissions/{id}` | Dettaglio: campi (con l'etichetta salvata al momento dell'invio), allegati, prova del consenso, consensi facoltativi, provenienza |
 | `PATCH` | `/wp-json/dbfb/v1/submissions/{id}` | Cambio di stato: `{"status": "read"}` |
 | `GET` | `/wp-json/dbfb/v1/stats` | Risposte per giorno e per form. Parametri: `days` (1–365, default 30), `form_id` |
-| `GET` | `/wp-json/dbfb/v1/me` | Nome dell'utente e link di logout, per la web app (2.21.0+) |
+| `GET` | `/wp-json/dbfb/v1/me` | Nome dell'utente e link di logout, per la web app (2.21.0+); dalla 2.22.0 anche la chiave VAPID e l'intervallo di aggiornamento |
+| `GET` | `/wp-json/dbfb/v1/updates` | Id dell'ultima risposta e risposte nuove per form, per il polling (2.22.0+) |
+| `POST` / `DELETE` | `/wp-json/dbfb/v1/push/subscription` | Registra o rimuove la sottoscrizione push del dispositivo: `{"endpoint": "…", "keys": {"p256dh": "…", "auth": "…"}}` (2.22.0+) |
+| `POST` | `/wp-json/dbfb/v1/push/test` | Notifica di prova ai dispositivi dell'utente (2.22.0+) |
 
 **Accesso:** serve la capability `dbfb_view_submissions`, che hanno l'amministratore e il nuovo ruolo **Gestore form**. Il ruolo non ha altri permessi: può consultare le risposte e cambiarne lo stato, ma non vede form, impostazioni, contenuti o utenti. Autenticazione standard di WordPress: cookie + nonce `wp_rest` dalle pagine del sito, [Application Passwords](https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/) per i client esterni (Utenti → Profilo → Password applicazione).
 
@@ -252,6 +265,9 @@ curl -u "utente:xxxx xxxx xxxx xxxx xxxx xxxx" \
 | `dbfb_revoke_rate_window` | `600` | Durata in secondi della finestra del limite precedente (2.16.0+) |
 | `dbfb_rest_rate_limit` | `120` | Richieste massime per utente alle API REST `dbfb/v1` nella finestra (2.20.0+, `0` = disattivato) |
 | `dbfb_rest_rate_window` | `60` | Durata in secondi della finestra del limite precedente (2.20.0+) |
+| `dbfb_push_allowed_hosts` | FCM, Mozilla, Apple, Windows | Host dei push service a cui il sito invia notifiche (2.22.0+) |
+| `dbfb_push_vapid_subject` | URL del sito (HTTPS) o `mailto:` dell'amministratore | Contatto VAPID comunicato ai push service (2.22.0+) |
+| `dbfb_notification_message` | titolo, testo, link, tag | Messaggio delle notifiche; riceve anche `$form_id` (2.22.0+). Non inserire dati delle risposte |
 
 Action:
 - `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
@@ -499,6 +515,16 @@ Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. 
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.22.0 — Aggiornamenti in tempo reale e notifiche
+
+Nessuna migrazione dello schema. Le notifiche push sono pronte all'uso; ntfy e Telegram si configurano in Form Builder → Web app.
+
+- **Polling leggero** (`GET /updates`) ogni 15 secondi con l'app in primo piano, sospeso in background; conteggi aggiornati senza ricaricare e pulsante "Mostra le nuove risposte" nelle liste.
+- **Badge** sull'icona dell'app installata (Badging API).
+- **Web Push senza librerie:** chiavi VAPID generate al primo uso (option non autoload), JWT ES256 e cifratura `aes128gcm` (RFC 8291/8292) con OpenSSL di PHP. Funziona da PHP 7.4, anche sui server senza `openssl.cnf` (configurazione minima inclusa nel plugin). Sottoscrizioni per utente e per dispositivo (massimo 10), rimosse quando il push service le dichiara scadute e al logout dalla web app.
+- **ntfy e Telegram** come canali alternativi, con notifica di prova dall'admin.
+- **Privacy:** nessun dato delle risposte nelle notifiche; titolo del form disattivabile; endpoint push limitati ai servizi dei browser; nuova voce nel registro dei trattamenti. La disinstallazione rimuove chiavi, impostazioni, token e sottoscrizioni.
 
 ### 2.21.0 — Web app delle risposte
 
@@ -905,6 +931,9 @@ db-form-builder/
 │   ├── class-roles.php              # Capability dbfb_view_submissions e ruolo "Gestore form" (2.20.0+)
 │   ├── class-rest.php               # API REST dbfb/v1 (2.20.0+)
 │   ├── class-app.php                # Web app: rotte /dbfb-app/, shell, manifest, service worker (2.21.0+)
+│   ├── class-web-push.php           # Web Push senza librerie: VAPID, cifratura RFC 8291 (2.22.0+)
+│   ├── class-notifications.php      # Notifiche: push, ntfy, Telegram, polling /updates (2.22.0+)
+│   ├── openssl.cnf                  # Configurazione OpenSSL minima per i server che ne sono privi (2.22.0+)
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)

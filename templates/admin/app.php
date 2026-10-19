@@ -5,6 +5,8 @@
  * @var string $app_url
  * @var bool   $pretty
  * @var string $role_name
+ * @var array  $notify          Impostazioni delle notifiche (2.22.0).
+ * @var bool   $push_supported  Il server può inviare Web Push (2.22.0).
  */
 if (!defined('ABSPATH')) exit;
 ?>
@@ -41,6 +43,86 @@ if (!defined('ABSPATH')) exit;
                 esc_html($role_name)
             );
         ?></p>
+
+        <?php // phpcs:disable WordPress.Security.NonceVerification.Recommended -- solo messaggi dopo il redirect. ?>
+        <?php if (isset($_GET['dbfb_saved'])): ?>
+            <div class="notice notice-success inline"><p><?php esc_html_e('Impostazioni delle notifiche salvate.', 'db-form-builder'); ?></p></div>
+        <?php endif; ?>
+        <?php if (isset($_GET['dbfb_test_ok'])): ?>
+            <div class="notice <?php echo absint($_GET['dbfb_test_failed'] ?? 0) ? 'notice-warning' : 'notice-success'; ?> inline"><p><?php
+                printf(
+                    /* translators: 1: invii riusciti, 2: invii falliti */
+                    esc_html__('Notifica di prova: %1$d inviate, %2$d non riuscite. Le notifiche push di prova arrivano solo sui tuoi dispositivi con le notifiche attive nella web app.', 'db-form-builder'),
+                    absint($_GET['dbfb_test_ok']),
+                    absint($_GET['dbfb_test_failed'] ?? 0)
+                );
+            ?></p></div>
+        <?php endif; ?>
+
+        <h2 id="notifiche"><?php esc_html_e('Notifiche delle nuove risposte', 'db-form-builder'); ?></h2>
+        <p><?php esc_html_e('Il messaggio non contiene mai i dati della risposta: solo "Nuova risposta", il titolo del form (se lo lasci attivo) e il link alla web app.', 'db-form-builder'); ?></p>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <input type="hidden" name="action" value="dbfb_save_notifications">
+            <?php wp_nonce_field('dbfb_save_notifications'); ?>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><?php esc_html_e('Notifiche push', 'db-form-builder'); ?></th>
+                    <td>
+                        <label><input type="checkbox" name="push" value="1" <?php checked(!empty($notify['push'])); ?> <?php disabled(!$push_supported); ?>>
+                            <?php esc_html_e('Consenti di attivare le notifiche push dalla web app', 'db-form-builder'); ?></label>
+                        <p class="description">
+                            <?php if ($push_supported): ?>
+                                <?php esc_html_e('Ogni utente le attiva dal proprio dispositivo. Su iPhone e iPad servono iOS 16.4 o successivo e l\'app aggiunta alla schermata Home.', 'db-form-builder'); ?>
+                            <?php else: ?>
+                                <?php esc_html_e('Non disponibili: il PHP del server non ha OpenSSL con il supporto alle curve ellittiche e ad AES-GCM. Usa ntfy o Telegram.', 'db-form-builder'); ?>
+                            <?php endif; ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Contenuto', 'db-form-builder'); ?></th>
+                    <td><label><input type="checkbox" name="show_form_title" value="1" <?php checked(!empty($notify['show_form_title'])); ?>>
+                        <?php esc_html_e('Mostra il titolo del form nella notifica', 'db-form-builder'); ?></label></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="dbfb-poll"><?php esc_html_e('Aggiornamento dell\'app', 'db-form-builder'); ?></label></th>
+                    <td>
+                        <input type="number" id="dbfb-poll" name="poll_interval" min="10" max="300" step="5" class="small-text" value="<?php echo esc_attr((int) $notify['poll_interval']); ?>">
+                        <?php esc_html_e('secondi', 'db-form-builder'); ?>
+                        <p class="description"><?php esc_html_e('Ogni quanto la web app aperta controlla se ci sono risposte nuove. Si ferma quando l\'app è in background. Su hosting condiviso con molti utenti conviene un valore più alto.', 'db-form-builder'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="dbfb-ntfy"><?php esc_html_e('ntfy', 'db-form-builder'); ?></label></th>
+                    <td>
+                        <input type="url" id="dbfb-ntfy" name="ntfy_url" class="regular-text" placeholder="https://ntfy.sh/nome-del-topic" value="<?php echo esc_attr($notify['ntfy_url']); ?>">
+                        <p class="description"><?php esc_html_e('URL HTTPS del topic, su ntfy.sh o su un server proprio. Sui server pubblici chiunque conosca il nome del topic legge i messaggi: scegli un nome lungo e casuale, o usa un token di accesso.', 'db-form-builder'); ?></p>
+                        <p><label for="dbfb-ntfy-token"><?php esc_html_e('Token di accesso (facoltativo)', 'db-form-builder'); ?></label><br>
+                            <input type="password" id="dbfb-ntfy-token" name="ntfy_token" class="regular-text" autocomplete="off" placeholder="<?php echo $notify['ntfy_token'] !== '' ? esc_attr__('Salvato: lascia vuoto per non cambiarlo', 'db-form-builder') : ''; ?>">
+                            <?php if ($notify['ntfy_token'] !== ''): ?>
+                                <label><input type="checkbox" name="ntfy_token_clear" value="1"> <?php esc_html_e('Rimuovi il token', 'db-form-builder'); ?></label>
+                            <?php endif; ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Telegram', 'db-form-builder'); ?></th>
+                    <td>
+                        <p><label for="dbfb-tg-token"><?php esc_html_e('Token del bot', 'db-form-builder'); ?></label><br>
+                            <input type="password" id="dbfb-tg-token" name="telegram_token" class="regular-text" autocomplete="off" placeholder="<?php echo $notify['telegram_token'] !== '' ? esc_attr__('Salvato: lascia vuoto per non cambiarlo', 'db-form-builder') : '123456:ABC…'; ?>"></p>
+                        <p><label for="dbfb-tg-chat"><?php esc_html_e('ID della chat o @canale', 'db-form-builder'); ?></label><br>
+                            <input type="text" id="dbfb-tg-chat" name="telegram_chat_id" class="regular-text" value="<?php echo esc_attr($notify['telegram_chat_id']); ?>"></p>
+                        <p class="description"><?php esc_html_e('Crea un bot con @BotFather, aggiungilo alla chat o al canale e inserisci qui token e ID. Svuota l\'ID per disattivare Telegram.', 'db-form-builder'); ?></p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button(__('Salva le notifiche', 'db-form-builder')); ?>
+        </form>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <input type="hidden" name="action" value="dbfb_test_notifications">
+            <?php wp_nonce_field('dbfb_test_notifications'); ?>
+            <?php submit_button(__('Invia una notifica di prova', 'db-form-builder'), 'secondary', 'submit', false); ?>
+        </form>
 
         <h2><?php esc_html_e('Privacy e cache', 'db-form-builder'); ?></h2>
         <p><?php esc_html_e('Sul dispositivo resta in memoria solo l\'interfaccia (HTML, CSS, JavaScript e icone), mai le risposte. Se usi un plugin di cache o una CDN, escludi dalla cache il percorso /dbfb-app/: il plugin lo segnala già ai plugin di cache più diffusi (DONOTCACHEPAGE) e invia header no-store.', 'db-form-builder'); ?></p>

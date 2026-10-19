@@ -3,7 +3,7 @@
  * Plugin Name: DB Form Builder
  * Plugin URI: https://www.davidebertolino.it
  * Description: Form builder con drag & drop, logica condizionale, reCAPTCHA gated dal consenso, email personalizzabili, export CSV con header esplicativi. Privacy by design: IP hashato, retention con pulizia allegati, snapshot fields, integrazione DSAR WordPress + DB Privacy Hub, informativa privacy per singolo form, monitoraggio conformità consenso GDPR. Webhook async con retry + HMAC signing.
- * Version: 2.21.0
+ * Version: 2.22.0
  * Author: Davide Bertolino
  * Author URI: https://www.davidebertolino.it
  * Text Domain: db-form-builder
@@ -14,7 +14,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DBFB_VERSION', '2.21.0');
+define('DBFB_VERSION', '2.22.0');
 define('DBFB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DBFB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBFB_PLUGIN_FILE', __FILE__);
@@ -63,6 +63,9 @@ require_once DBFB_PLUGIN_DIR . 'inc/class-roles.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-rest.php';
 // Web app (PWA) delle risposte su /dbfb-app/ (2.21.0).
 require_once DBFB_PLUGIN_DIR . 'inc/class-app.php';
+// Notifiche delle nuove risposte: Web Push (senza librerie), ntfy, Telegram (2.22.0).
+require_once DBFB_PLUGIN_DIR . 'inc/class-web-push.php';
+require_once DBFB_PLUGIN_DIR . 'inc/class-notifications.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-email.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-prefill.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-consents.php';

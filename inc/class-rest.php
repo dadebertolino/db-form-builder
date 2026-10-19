@@ -10,6 +10,9 @@
  *  - GET   /stats                 risposte per giorno e per form (days, form_id)
  *  - GET   /me                    nome dell'utente e link di logout (2.21.0, web app)
  *
+ * Altre rotte dello stesso namespace in DBFB_Notifications (2.22.0):
+ * GET /updates, POST e DELETE /push/subscription, POST /push/test.
+ *
  * Autenticazione: quella standard di WordPress. Cookie + nonce `wp_rest` per
  * la web app sullo stesso dominio, Application Passwords per i client
  * esterni. Ogni rotta richiede la capability dbfb_view_submissions (vedi
@@ -256,6 +259,8 @@ class DBFB_REST {
             'name'       => html_entity_decode((string) $user->display_name, ENT_QUOTES, 'UTF-8'),
             // wp_logout_url() è già escapato per l'HTML (&amp;): nel JSON serve l'URL vero.
             'logout_url' => wp_specialchars_decode(class_exists('DBFB_App') ? wp_logout_url(DBFB_App::url()) : wp_logout_url(), ENT_QUOTES),
+            // 2.22.0: notifiche push e intervallo di polling.
+            'notifications' => class_exists('DBFB_Notifications') ? DBFB_Notifications::client_info() : null,
         ));
     }
 
