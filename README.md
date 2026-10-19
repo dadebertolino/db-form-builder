@@ -185,6 +185,22 @@ Le richieste DSAR includono i consensi facoltativi: l'export li riporta in un gr
 
 Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)`). Letta dal Privacy Hub per decidere se inserire la menzione "procedura DSAR semplificata via Strumenti → Esporta/Cancella dati personali" nella sezione "Diritti dell'interessato" della Privacy Policy generata.
 
+## Web app delle risposte (2.21.0+)
+
+Un'app installabile (PWA) per consultare le risposte da smartphone o PC, all'indirizzo `https://example.com/dbfb-app/`. Il link è anche in Form Builder → Web app.
+
+- **Accesso:** login di WordPress. Possono entrare gli amministratori e gli utenti con il ruolo **Gestore form**, che dopo il login arrivano direttamente all'app.
+- **Viste:** elenco dei form con il numero di risposte nuove, risposte di un form con filtro per stato (nuove, lette, archiviate) e "Carica altre", dettaglio con campi, allegati, consenso e provenienza. Una risposta aperta diventa "letta"; dal dettaglio si può archiviare, ripristinare o rimettere tra le nuove.
+- **Installazione:** Android (Chrome) → menu ⋮ → "Installa app"; iPhone e iPad (Safari) → Condividi → "Aggiungi alla schermata Home"; Chrome ed Edge su PC → icona nella barra degli indirizzi.
+- **Tema chiaro e scuro** (automatico o scelto dall'icona nella barra), accessibilità WCAG 2.1 AA: navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci per gli screen reader, pulsanti da 44 px.
+- **Nessuna build:** JavaScript e CSS senza dipendenze, in `assets/app/`.
+
+**Privacy:** il service worker tiene in cache solo l'interfaccia (HTML, CSS, JavaScript, icone). La shell HTML non contiene dati personali né nonce: utente, form e risposte arrivano dalle API a ogni apertura e non vengono salvati sul dispositivo. Sul dispositivo resta solo la scelta del tema (localStorage). La shell non carica `wp_head()`, quindi nessuno script del tema o di altri plugin, e ha una Content Security Policy che consente script, stili e connessioni solo verso il sito.
+
+**Cache di pagina:** `/dbfb-app/` invia header `no-store` e definisce `DONOTCACHEPAGE` (WP Rocket, W3 Total Cache, WP Super Cache, LiteSpeed Cache). Con una CDN o una cache del server configurata a parte, escludi il percorso `/dbfb-app/`.
+
+**Permalink:** con la struttura "Semplice" l'app funziona su `?dbfb_app=shell`, ma non si installa né parte offline (il service worker non viene registrato).
+
 ## API REST (2.20.0+)
 
 Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
@@ -196,6 +212,7 @@ Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
 | `GET` | `/wp-json/dbfb/v1/submissions/{id}` | Dettaglio: campi (con l'etichetta salvata al momento dell'invio), allegati, prova del consenso, consensi facoltativi, provenienza |
 | `PATCH` | `/wp-json/dbfb/v1/submissions/{id}` | Cambio di stato: `{"status": "read"}` |
 | `GET` | `/wp-json/dbfb/v1/stats` | Risposte per giorno e per form. Parametri: `days` (1–365, default 30), `form_id` |
+| `GET` | `/wp-json/dbfb/v1/me` | Nome dell'utente e link di logout, per la web app (2.21.0+) |
 
 **Accesso:** serve la capability `dbfb_view_submissions`, che hanno l'amministratore e il nuovo ruolo **Gestore form**. Il ruolo non ha altri permessi: può consultare le risposte e cambiarne lo stato, ma non vede form, impostazioni, contenuti o utenti. Autenticazione standard di WordPress: cookie + nonce `wp_rest` dalle pagine del sito, [Application Passwords](https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/) per i client esterni (Utenti → Profilo → Password applicazione).
 
@@ -482,6 +499,16 @@ Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. 
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.21.0 — Web app delle risposte
+
+Nessuna migrazione dello schema. Le regole di rewrite di `/dbfb-app/` si registrano da sole dopo l'aggiornamento.
+
+- **Web app (PWA) su `/dbfb-app/`:** elenco dei form con risposte nuove, risposte filtrate per stato, dettaglio con allegati e consensi, cambio di stato, tema chiaro e scuro, installabile su Android, iOS e desktop. Vedi la sezione "Web app delle risposte".
+- **Service worker** con scope `/dbfb-app/`: in cache solo l'interfaccia, mai le risposte. A sito irraggiungibile l'app si apre comunque e lo segnala.
+- **Shell senza dati personali e senza `wp_head()`**, con Content Security Policy, `X-Frame-Options: DENY`, header `no-store` e `DONOTCACHEPAGE`.
+- **Login del "Gestore form"** reindirizzato all'app; nuova pagina admin Form Builder → Web app con link e istruzioni di installazione.
+- **API:** nuova rotta `GET /me`.
 
 ### 2.20.0 — API REST e ruolo "Gestore form"
 
@@ -877,6 +904,7 @@ db-form-builder/
 │   ├── class-submissions-repository.php # Accesso unico alla tabella risposte: query, stato, cancellazione, subject_hash (2.19.0+)
 │   ├── class-roles.php              # Capability dbfb_view_submissions e ruolo "Gestore form" (2.20.0+)
 │   ├── class-rest.php               # API REST dbfb/v1 (2.20.0+)
+│   ├── class-app.php                # Web app: rotte /dbfb-app/, shell, manifest, service worker (2.21.0+)
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)
@@ -896,12 +924,16 @@ db-form-builder/
 │   │   ├── db-admin-ui.css          # Design system condiviso dei plugin DB (2.13.0+)
 │   │   ├── admin.css
 │   │   └── frontend.css
+│   ├── app/                         # Web app (2.21.0+): app.js, app.css, sw.js, icone
 │   └── js/
 │       ├── admin.js                 # Builder, condizionale, file settings
 │       ├── frontend.js              # Submit, condizionale, precompilazione, eventi, file drag&drop, multi-step
 │       └── gutenberg-block.js
 └── templates/
+    ├── app/
+    │   └── shell.php                # Shell HTML della web app (2.21.0+)
     ├── admin/
+    │   ├── app.php                  # Pagina "Web app" (2.21.0+)
     │   ├── forms-list.php
     │   ├── form-builder.php
     │   ├── settings.php

@@ -8,6 +8,7 @@
  *  - GET   /submissions/{id}      dettaglio con campi, allegati, consensi, provenienza
  *  - PATCH /submissions/{id}      cambio di stato (new | read | archived)
  *  - GET   /stats                 risposte per giorno e per form (days, form_id)
+ *  - GET   /me                    nome dell'utente e link di logout (2.21.0, web app)
  *
  * Autenticazione: quella standard di WordPress. Cookie + nonce `wp_rest` per
  * la web app sullo stesso dominio, Application Passwords per i client
@@ -80,6 +81,12 @@ class DBFB_REST {
                     'status' => array('type' => 'string', 'enum' => DBFB_Submissions_Repository::STATUSES, 'required' => true),
                 ),
             ),
+        ));
+
+        register_rest_route($ns, '/me', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => array(__CLASS__, 'get_me'),
+            'permission_callback' => array(__CLASS__, 'permission_check'),
         ));
 
         register_rest_route($ns, '/stats', array(
@@ -235,6 +242,21 @@ class DBFB_REST {
         }
         DBFB_Submissions_Repository::set_status(array($id), (string) $request['status']);
         return rest_ensure_response(self::prepare_summary(DBFB_Submissions_Repository::get($id)));
+    }
+
+    /**
+     * Utente corrente per la web app (2.21.0). Il link di logout contiene un
+     * nonce di sessione: per questo non sta nella shell, che va in cache.
+     *
+     * @return WP_REST_Response
+     */
+    public static function get_me() {
+        $user = wp_get_current_user();
+        return rest_ensure_response(array(
+            'name'       => html_entity_decode((string) $user->display_name, ENT_QUOTES, 'UTF-8'),
+            // wp_logout_url() è già escapato per l'HTML (&amp;): nel JSON serve l'URL vero.
+            'logout_url' => wp_specialchars_decode(class_exists('DBFB_App') ? wp_logout_url(DBFB_App::url()) : wp_logout_url(), ENT_QUOTES),
+        ));
     }
 
     /**

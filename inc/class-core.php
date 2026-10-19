@@ -117,6 +117,9 @@ class DB_Form_Builder {
         // Capability, ruolo "Gestore form" e API REST dbfb/v1 (2.20.0).
         DBFB_Roles::init();
         DBFB_REST::init();
+
+        // Web app (PWA) delle risposte (2.21.0).
+        DBFB_App::init();
     }
 
     // =========================================================
