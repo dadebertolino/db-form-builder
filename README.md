@@ -1,6 +1,6 @@
 # DB Form Builder
 
-Plugin WordPress per la creazione di form con drag & drop, logica condizionale, upload file, multi-step e webhook.
+Plugin WordPress per la creazione di form con drag & drop, logica condizionale, upload file, multi-step e webhook. Dalla 2.21.0 le risposte si consultano anche da smartphone o PC con una web app installabile, con notifiche e, se c'è WooCommerce, collegamento agli ordini.
 
 **Autore:** Davide Bertolino  
 **Sito:** [https://www.davidebertolino.it](https://www.davidebertolino.it)  
@@ -34,6 +34,11 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
 - **Documenti nella conferma (2.14.0+)** — Uno o più file della Media Library (regolamento, brochure, modulo) inviati come link nell'email di conferma con il segnaposto `{documenti}`
 - **Colori personalizzabili (2.12.0+)** — Sfondo, pulsanti e testo del form, globali o per singolo form, con contrasto WCAG AA garantito sui pulsanti e avviso sul testo
 - **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, allegati scaricabili solo dall'admin (2.13.0+), stato nuova/letta/archiviata con filtri e paginazione (2.19.0+)
+- **Web app delle risposte (2.21.0+)** — Su `/dbfb-app/`, installabile su Android, iPhone e PC: elenco dei form con risposte nuove, filtri per stato, dettaglio con allegati, tema chiaro/scuro. In cache sul dispositivo solo l'interfaccia, mai le risposte
+- **Aggiornamenti in tempo reale e notifiche (2.22.0+)** — Conteggi aggiornati con l'app aperta, badge sull'icona, notifiche push senza librerie esterne, in alternativa ntfy o Telegram; mai dati delle risposte nei messaggi
+- **Ruolo "Gestore form" (2.20.0+)** — Per chi segue le risposte senza accedere al resto dell'amministrazione
+- **API REST `dbfb/v1` (2.20.0+)** — Form, risposte, stato e statistiche, con cookie o Application Passwords
+- **WooCommerce (2.23.0+)** — Ordini del cliente accanto alla risposta e ordine "in attesa di pagamento" creato da un preventivo, con link di pagamento (2.24.0+). Compatibile HPOS
 - **Aggiornamenti automatici** — da GitHub Releases, direttamente in Plugin → Aggiornamenti (2.13.0+)
 - **Duplica form** — Copia campi e impostazioni con un click
 - **Esporta / importa form (2.18.0+)** — Un form come file `.json`, per passarlo da un sito di test alla produzione
@@ -127,6 +132,9 @@ Il Form Builder fa parte dell'ecosistema privacy dei plugin DB (**DB Privacy Hub
 | Consenso dell'utente | Sì | Checkbox GDPR per form, prova del consenso art. 7.1 |
 | DSAR | Sì | Exporter + eraser (art. 15 e 17), marker `DBFB_DSAR_AVAILABLE` |
 | Privacy Hub | Sì | `dbph_processing_register`, `dbph_user_data_exporters/erasers`, `dbph_consents_register` |
+| Web app (2.21.0+) | Sì | Solo utenti con `dbfb_view_submissions`; service worker con cache della sola interfaccia, shell senza dati personali |
+| Notifiche (2.22.0+) | Opzionale | Sottoscrizioni push del personale nello user meta; messaggi senza dati delle risposte; voce "Notifiche al personale" nel registro dei trattamenti |
+| WooCommerce (2.23.0+) | Opzionale | Collegamenti risposta → ordine in `wp_dbfb_links`, cancellati con la risposta; ordini collegati nell'export DSAR; voce nel registro dei trattamenti |
 
 ### Consent gate per reCAPTCHA (lato client dalla 2.13.0)
 
@@ -526,6 +534,9 @@ Cosa succede durante l'import:
 
 L'avviso dopo l'import elenca tutto ciò che è stato cambiato o va ricontrollato.
 
+### Web app
+Form Builder > Web app: indirizzo dell'app, istruzioni di installazione, notifiche e controllo delle API. Per dare l'accesso a un collaboratore senza aprirgli l'amministrazione, crea un utente con il ruolo **Gestore form**. Dettagli nella sezione "Web app delle risposte".
+
 ### Risposte
 Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV.
 
@@ -543,6 +554,7 @@ Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. 
 - Contrasto ≥ 4.5:1 su tutti i testi e componenti
 - `prefers-reduced-motion` e `forced-colors` supportati
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
+- Web app (2.21.0+): navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci `aria-live` per aggiornamenti e cambi di stato, errori dei moduli associati ai campi (`aria-invalid` + `aria-describedby`), tema chiaro/scuro con contrasti AA
 
 ## Changelog
 
@@ -966,6 +978,9 @@ Allineamento al pattern dell'ecosistema DB (DB Cookie Manager 3.0.2 + DB SEO Man
 
 - WordPress 5.8+
 - PHP 7.4+
+- Web app installabile e offline: permalink diversi da "Semplice" e sito in HTTPS
+- Notifiche push (facoltative): estensione OpenSSL con curve ellittiche e AES-GCM, presente nelle installazioni PHP standard. Senza, restano ntfy e Telegram
+- WooCommerce (facoltativo): testato con WooCommerce 11.2, archiviazione ordini HPOS e classica
 
 ## Struttura
 
