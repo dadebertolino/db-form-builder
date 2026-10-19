@@ -77,6 +77,9 @@ if (!defined('ABSPATH')) exit;
         <?php if (isset($_GET['dbfb_saved'])): ?>
             <div class="notice notice-success inline"><p><?php esc_html_e('Impostazioni delle notifiche salvate.', 'db-form-builder'); ?></p></div>
         <?php endif; ?>
+        <?php if (($_GET['dbfb_error'] ?? '') === 'telegram_token'): ?>
+            <div class="notice notice-error inline"><p><?php esc_html_e('Il token del bot Telegram non è valido (formato 123456:ABC…): è rimasto quello salvato in precedenza.', 'db-form-builder'); ?></p></div>
+        <?php endif; ?>
         <?php if (isset($_GET['dbfb_test_ok'])): ?>
             <div class="notice <?php echo absint($_GET['dbfb_test_failed'] ?? 0) ? 'notice-warning' : 'notice-success'; ?> inline"><p><?php
                 printf(

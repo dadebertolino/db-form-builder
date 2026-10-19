@@ -41,6 +41,17 @@ class DBFB_App {
         // Pagine non accessibili: WordPress le blocca (403) prima di admin_init.
         add_action('admin_page_access_denied', array(__CLASS__, 'keep_managers_in_app'));
         add_filter('show_admin_bar', array(__CLASS__, 'hide_admin_bar_for_managers'));
+        // WooCommerce rimanda a "Il mio account" chi non ha edit_posts: il
+        // profilo (password, Application Passwords) deve restare raggiungibile.
+        add_filter('woocommerce_prevent_admin_access', array(__CLASS__, 'allow_profile_with_woocommerce'));
+    }
+
+    public static function allow_profile_with_woocommerce($prevent) {
+        global $pagenow;
+        if (self::is_app_only_user() && in_array($pagenow, array('profile.php', 'authorize-application.php'), true)) {
+            return false;
+        }
+        return $prevent;
     }
 
     // =========================================================

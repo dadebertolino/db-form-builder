@@ -556,6 +556,8 @@ Migrazione dello schema v7 → v8 (nuova tabella `wp_dbfb_links`), automatica.
 - **API:** `GET /submissions/{id}/order-draft`, `POST /submissions/{id}/orders`, `POST /orders/{id}/send-invoice`.
 - **Gestore form solo nell'app:** le pagine dell'amministrazione (tranne il profilo) riportano all'app, niente barra di amministrazione sul sito.
 - **Controllo delle API** nella pagina Web app: avviso se un plugin di sicurezza blocca `/wp-json/` o se le Application Passwords non sono disponibili.
+- **Importi ambigui rifiutati:** "1.250" o "1,250" si interpretano con i separatori del negozio; se il separatore è quello decimale seguito da tre cifre l'importo viene rifiutato, invece di diventare 1,25 nel link di pagamento.
+- **Correzioni dalla revisione del codice:** rate limit delle API a finestra fissa (prima, con l'app aperta, il polling impediva al contatore di azzerarsi e dopo circa mezz'ora arrivava un 429); token ntfy inviato solo al server per cui era stato salvato; un token Telegram non valido non cancella più quello salvato e mostra un avviso; nessuna sottoscrizione push persa se un dispositivo si attiva durante un invio; con WooCommerce attivo il Gestore form raggiunge di nuovo il proprio profilo.
 
 ### 2.23.0 — WooCommerce: risposte e ordini del cliente
 

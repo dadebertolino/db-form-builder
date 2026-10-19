@@ -128,6 +128,9 @@ class DBFB_Woo_Order_Builder {
         if (!$row) return self::not_found();
 
         $amount = self::parse_amount((string) $request['amount']);
+        if ($amount === null) {
+            return new WP_Error('dbfb_ambiguous_amount', __('Importo ambiguo: scrivilo con i decimali (es. 1.250,00) o senza separatori (1250).', 'db-form-builder'), array('status' => 400, 'field' => 'amount'));
+        }
         if ($amount <= 0) {
             return new WP_Error('dbfb_invalid_amount', __('Inserisci un importo maggiore di zero.', 'db-form-builder'), array('status' => 400, 'field' => 'amount'));
         }
@@ -388,21 +391,50 @@ class DBFB_Woo_Order_Builder {
     }
 
     /**
-     * Importo da testo, con virgola o punto decimale ("1.250,50", "1250.5").
+     * Importo da testo ("1.250,50", "1,250.50", "1250.5", "1.250").
+     *
+     * Con entrambi i separatori, l'ultimo è quello decimale. Con uno solo,
+     * ripetuto, è delle migliaia. Con uno solo seguito da esattamente tre
+     * cifre ("1.250", "1,250") decide l'impostazione del negozio: se è il suo
+     * separatore delle migliaia vale 1250, se è quello decimale l'importo è
+     * ambiguo e viene rifiutato (null), perché un errore di un fattore mille
+     * finirebbe in un link di pagamento.
      *
      * @param string $raw
-     * @return float
+     * @return float|null null se ambiguo.
      */
     public static function parse_amount($raw) {
-        $raw = preg_replace('/[^\d,.\-]/', '', trim($raw));
+        $raw = preg_replace('/[^\d,.\-]/', '', trim((string) $raw));
         if ($raw === '' || $raw === null) return 0.0;
-        $last_comma = strrpos($raw, ',');
-        $last_dot   = strrpos($raw, '.');
-        if ($last_comma !== false && ($last_dot === false || $last_comma > $last_dot)) {
-            // Virgola decimale: i punti sono separatori delle migliaia.
-            $raw = str_replace(array('.', ','), array('', '.'), $raw);
+
+        $has_comma = strpos($raw, ',') !== false;
+        $has_dot   = strpos($raw, '.') !== false;
+        if ($has_comma && $has_dot) {
+            $decimal = strrpos($raw, ',') > strrpos($raw, '.') ? ',' : '.';
+        } elseif ($has_comma || $has_dot) {
+            $sep = $has_comma ? ',' : '.';
+            if (substr_count($raw, $sep) > 1) {
+                $decimal = '';
+            } elseif (preg_match('/' . preg_quote($sep, '/') . '\d{3}$/', $raw)) {
+                if ($sep === wc_get_price_thousand_separator()) {
+                    $decimal = '';
+                } else {
+                    return null;
+                }
+            } else {
+                $decimal = $sep;
+            }
         } else {
-            $raw = str_replace(',', '', $raw);
+            $decimal = '';
+        }
+
+        $thousands = array(',', '.');
+        if ($decimal !== '') {
+            $thousands = array_values(array_diff($thousands, array($decimal)));
+        }
+        $raw = str_replace($thousands, '', $raw);
+        if ($decimal !== '') {
+            $raw = str_replace($decimal, '.', $raw);
         }
         return round((float) $raw, wc_get_price_decimals());
     }

@@ -82,17 +82,28 @@ class DBFB_Notifications {
             'show_form_title'  => empty($_POST['show_form_title']) ? 0 : 1,
             'poll_interval'    => isset($_POST['poll_interval']) ? max(10, min(300, absint($_POST['poll_interval']))) : 15,
             'ntfy_url'         => $ntfy,
-            // I segreti già salvati non vengono mostrati: campo vuoto = invariato.
-            'ntfy_token'       => $ntoken !== '' ? $ntoken : ($ntfy !== '' ? $current['ntfy_token'] : ''),
-            'telegram_token'   => preg_match('/^\d+:[A-Za-z0-9_-]{20,}$/', $token) ? $token : ($token === '' && $chat !== '' ? $current['telegram_token'] : ''),
+            // I segreti già salvati non vengono mostrati: campo vuoto = invariato,
+            // ma il token ntfy resta solo se il server è lo stesso.
+            'ntfy_token'       => $ntoken !== '' ? $ntoken : ($ntfy !== '' && self::same_host($ntfy, $current['ntfy_url']) ? $current['ntfy_token'] : ''),
+            'telegram_token'   => preg_match('/^\d+:[A-Za-z0-9_-]{20,}$/', $token) ? $token : ($chat !== '' ? $current['telegram_token'] : ''),
             'telegram_chat_id' => preg_match('/^(-?\d+|@[A-Za-z0-9_]{5,})$/', $chat) ? $chat : '',
         );
         if (!empty($_POST['ntfy_token_clear'])) $settings['ntfy_token'] = '';
         if ($settings['telegram_chat_id'] === '') $settings['telegram_token'] = '';
 
         update_option(self::OPTION, $settings, false);
-        wp_safe_redirect(add_query_arg('dbfb_saved', '1', admin_url('admin.php?page=dbfb-app')));
+        $args = array('dbfb_saved' => '1');
+        // Token Telegram scritto ma non valido: si tiene quello di prima e si avvisa.
+        if ($token !== '' && !preg_match('/^\d+:[A-Za-z0-9_-]{20,}$/', $token)) {
+            $args['dbfb_error'] = 'telegram_token';
+        }
+        wp_safe_redirect(add_query_arg($args, admin_url('admin.php?page=dbfb-app')));
         exit;
+    }
+
+    private static function same_host($a, $b) {
+        $ha = strtolower((string) wp_parse_url((string) $a, PHP_URL_HOST));
+        return $ha !== '' && $ha === strtolower((string) wp_parse_url((string) $b, PHP_URL_HOST));
     }
 
     /**
@@ -256,8 +267,8 @@ class DBFB_Notifications {
             'tag'   => (string) $message['tag'],
         ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
-        $subs = self::subscriptions($user_id);
-        foreach ($subs as $key => $sub) {
+        $expired = array();
+        foreach (self::subscriptions($user_id) as $key => $sub) {
             $code = DBFB_Web_Push::send($sub, $payload);
             if (!is_wp_error($code) && $code >= 200 && $code < 300) {
                 ++$out['sent'];
@@ -265,12 +276,17 @@ class DBFB_Notifications {
             }
             ++$out['failed'];
             if (!is_wp_error($code) && in_array($code, array(404, 410), true)) {
-                unset($subs[$key]);
+                $expired[] = $key;
             }
             DB_Form_Builder::debug_log('push non inviato (' . (is_wp_error($code) ? $code->get_error_code() : 'HTTP ' . $code) . ')');
         }
-        if (count($subs) !== count(self::subscriptions($user_id))) {
-            self::save_subscriptions($user_id, $subs);
+        if ($expired) {
+            // Riletto ora: un dispositivo attivato durante gli invii non va perso.
+            $fresh = self::subscriptions($user_id);
+            foreach ($expired as $key) {
+                unset($fresh[$key]);
+            }
+            self::save_subscriptions($user_id, $fresh);
         }
         return $out;
     }

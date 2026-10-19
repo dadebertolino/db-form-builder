@@ -144,7 +144,10 @@ class DBFB_REST {
             return $result;
         }
         // Prefisso dbfb_rate_: ripulito dalla disinstallazione con gli altri limiti.
-        $key   = 'dbfb_rate_rest_' . get_current_user_id();
+        // Finestra fissa (una chiave per finestra): set_transient() rinnova la
+        // scadenza a ogni scrittura, quindi con una chiave unica il contatore
+        // non si azzererebbe mai finché l'app interroga /updates.
+        $key   = 'dbfb_rate_rest_' . get_current_user_id() . '_' . (int) floor(time() / $window);
         $count = (int) get_transient($key);
         if ($count >= $limit) {
             return new WP_Error('dbfb_rate_limited', __('Troppe richieste. Riprova tra poco.', 'db-form-builder'), array('status' => 429));
