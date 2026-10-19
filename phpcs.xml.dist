@@ -21,8 +21,9 @@
     <arg name="extensions" value="php"/>
     <arg name="parallel" value="4"/>
 
-    <!-- Gli error bloccano la CI; i warning informano soltanto. -->
-    <config name="ignore_warnings_on_exit" value="1"/>
+    <!-- Dalla 2.18.3 bloccano la CI sia gli error sia i warning: il codice
+         è a zero violazioni e deve restarci. Eccezioni motivate con
+         phpcs:ignore nel codice. -->
     <config name="minimum_wp_version" value="5.8"/>
 
     <rule ref="WordPress-Extra">

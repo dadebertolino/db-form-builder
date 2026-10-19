@@ -229,8 +229,8 @@ class DB_Form_Builder {
              LIMIT 5000"
         );
 
-        if ($deleted > 0 && defined('WP_DEBUG') && WP_DEBUG) {
-            error_log("DB Form Builder: cleanup_old_deliveries cancellate $deleted righe");
+        if ($deleted > 0) {
+            self::debug_log("cleanup_old_deliveries cancellate $deleted righe");
         }
         return $deleted;
     }
@@ -298,8 +298,8 @@ class DB_Form_Builder {
         // 2.16.0: consensi rimasti senza risposta e poi revocati.
         DBFB_Consents::cleanup_revoked_orphans($days);
 
-        if ($deleted > 0 && defined('WP_DEBUG') && WP_DEBUG) {
-            error_log(sprintf('DB Form Builder: cleanup_expired_submissions cancellate %d righe (retention %d giorni), %d file allegati rimossi', (int) $deleted, $days, (int) $files_deleted));
+        if ($deleted > 0) {
+            self::debug_log(sprintf('cleanup_expired_submissions cancellate %d righe (retention %d giorni), %d file allegati rimossi', (int) $deleted, $days, (int) $files_deleted));
         }
 
         /**
@@ -1068,6 +1068,16 @@ class DB_Form_Builder {
     // SHARED HELPERS
     // =========================================================
 
+    /**
+     * Scrive nel log PHP solo con WP_DEBUG attivo (2.18.3): in produzione
+     * i log del plugin restano puliti.
+     */
+    public static function debug_log($message) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('DB Form Builder: ' . $message); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        }
+    }
+
     public static function get_global_settings() {
         $defaults = [
             'recaptcha_version' => 'v2',
@@ -1430,10 +1440,10 @@ class DB_Form_Builder {
                     continue;
                 }
                 if ($abs_path && file_exists($abs_path) && is_file($abs_path)) {
-                    if (@unlink($abs_path)) {
+                    if (@unlink($abs_path)) { // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- serve l'esito; wp_delete_file() lo restituisce solo da WP 6.4.
                         ++$deleted;
-                    } elseif (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log("DB Form Builder: impossibile cancellare l'allegato {$abs_path} (permessi?)");
+                    } else {
+                        self::debug_log("impossibile cancellare l'allegato {$abs_path} (permessi?)");
                     }
                 }
             }

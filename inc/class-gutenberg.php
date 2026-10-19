@@ -10,7 +10,8 @@ class DBFB_Gutenberg {
             'dbfb-gutenberg-block',
             DBFB_PLUGIN_URL . 'assets/js/gutenberg-block.js',
             ['wp-blocks', 'wp-element', 'wp-components', 'wp-block-editor'],
-            DBFB_VERSION
+            DBFB_VERSION,
+            false
         );
 
         $forms = get_posts([

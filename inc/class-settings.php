@@ -27,7 +27,7 @@ class DBFB_Settings {
         if (!is_numeric($value)) return 365;
         $n = (int) $value;
         if ($n < 0) return 365; // negativi sono errori utente, non scelta valida
-        return min(3650, $n);    // 0 ammesso (= illimitato)
+        return min(3650, $n);    // zero ammesso: retention illimitata
     }
 
     public static function render_page() {

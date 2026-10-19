@@ -99,7 +99,7 @@ class DBFB_Email {
         }
 
         $placeholders['{riepilogo_dati}'] = trim($riepilogo);
-        // 2.17.0: {utm_source}, {utm_campaign}, ..., {pagina_form}.
+        // 2.17.0: segnaposto della campagna (utm_source, utm_campaign, ...) e pagina_form.
         return array_merge($placeholders, DBFB_Attribution::placeholders($data));
     }
 
