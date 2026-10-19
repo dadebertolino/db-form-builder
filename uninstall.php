@@ -12,7 +12,8 @@
  *  SOFT (default, opt-in NON attivo):
  *    - Rimuove le option del plugin (settings, schema_version)
  *    - Disschedula i cron dbfb_cleanup_submissions, dbfb_cleanup_deliveries
- *      e i dispatch dbfb_webhook_dispatch in coda (2.13.0)
+ *      e i dispatch dbfb_webhook_dispatch in coda (2.13.0), il backfill
+ *      dbfb_backfill_subject_hash (2.19.0)
  *    - Pulisce i transient dbfb_rate_*
  *    - LASCIA INTATTI: tabelle submissions e webhook deliveries, post type
  *      dbfb_form + relativi post meta, allegati in uploads/dbfb/
@@ -71,6 +72,8 @@ wp_clear_scheduled_hook('dbfb_cleanup_submissions');
 // wp_clear_scheduled_hook() senza argomenti non li troverebbe, quindi usiamo
 // wp_unschedule_hook() (WP 5.1+) che rimuove ogni evento dell'hook.
 wp_clear_scheduled_hook('dbfb_cleanup_deliveries');
+// 2.19.0: backfill di subject_hash sulle risposte pre-2.19.0.
+wp_clear_scheduled_hook('dbfb_backfill_subject_hash');
 if (function_exists('wp_unschedule_hook')) {
     wp_unschedule_hook('dbfb_webhook_dispatch');
 } else {
@@ -82,6 +85,7 @@ delete_option('dbfb_global_settings');
 delete_option('dbfb_schema_version');
 delete_option('dbfb_uploads_protection');
 delete_option('dbfb_file_link_secret');
+delete_option('dbfb_subject_backfill');
 
 // 2.3 — Transient di rate limit. dbfb_rate_* sono creati con set_transient
 // a runtime, quindi vivono in wp_options come _transient_dbfb_rate_*.

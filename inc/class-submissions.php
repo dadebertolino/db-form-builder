@@ -3,10 +3,10 @@ if (!defined('ABSPATH')) exit;
 
 class DBFB_Submissions {
 
-    public static function render_page($form_id) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'dbfb_submissions';
+    // Risposte per pagina nella vista admin (2.19.0).
+    const ADMIN_PER_PAGE = 50;
 
+    public static function render_page($form_id) {
         $form = get_post($form_id);
         $form_fields = get_post_meta($form_id, '_dbfb_fields', true) ?: [];
 
@@ -14,10 +14,25 @@ class DBFB_Submissions {
             return !in_array($f['type'], ['divider', 'html', 'image', 'pagebreak'], true);
         });
 
-        $submissions = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $table WHERE form_id = %d ORDER BY submitted_at DESC",
-            $form_id
-        ));
+        // 2.19.0: filtro per stato e paginazione (prima tutte le risposte
+        // del form in una sola pagina). Parametri di sola visualizzazione.
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended
+        $status = isset($_GET['status']) ? sanitize_key(wp_unslash($_GET['status'])) : '';
+        $paged  = isset($_GET['paged']) ? max(1, absint($_GET['paged'])) : 1;
+        // phpcs:enable WordPress.Security.NonceVerification.Recommended
+        if (!DBFB_Submissions_Repository::is_valid_status($status)) $status = '';
+
+        $status_counts = DBFB_Submissions_Repository::counts_by_status($form_id);
+        $total_all     = array_sum($status_counts);
+
+        $result = DBFB_Submissions_Repository::query([
+            'form_id'  => $form_id,
+            'status'   => $status,
+            'per_page' => self::ADMIN_PER_PAGE,
+            'page'     => $paged,
+        ]);
+        $submissions = $result['rows'];
+        $total_pages = (int) ceil($result['total'] / self::ADMIN_PER_PAGE);
 
         // 2.16.0: consensi facoltativi per submission (una query sola).
         $consents_by_submission = DBFB_Consents::for_submissions(wp_list_pluck((array) $submissions, 'id'));
@@ -26,9 +41,6 @@ class DBFB_Submissions {
     }
 
     public static function render_all_submissions_page() {
-        global $wpdb;
-        $table = $wpdb->prefix . 'dbfb_submissions';
-
         // Routing di sola visualizzazione, form_id passato a intval().
         // phpcs:disable WordPress.Security.NonceVerification.Recommended
         if (isset($_GET['form_id']) && intval($_GET['form_id']) > 0) {
@@ -44,15 +56,36 @@ class DBFB_Submissions {
             'order' => 'DESC'
         ]);
 
+        // 2.19.0: totali e nuove per form in una query (prima un COUNT per form).
+        $by_form = DBFB_Submissions_Repository::counts_by_form();
         $counts = [];
+        $new_counts = [];
         foreach ($forms as $form) {
-            $counts[$form->ID] = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM $table WHERE form_id = %d",
-                $form->ID
-            ));
+            $counts[$form->ID]     = $by_form[$form->ID]['total'] ?? 0;
+            $new_counts[$form->ID] = $by_form[$form->ID]['new'] ?? 0;
         }
 
         include DBFB_PLUGIN_DIR . 'templates/admin/submissions-list.php';
+    }
+
+    /**
+     * AJAX: segna come letta una risposta nuova all'apertura del dettaglio (2.19.0).
+     * Le risposte archiviate restano archiviate.
+     */
+    public static function ajax_mark_read() {
+        check_ajax_referer('dbfb_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('Permessi insufficienti', 'db-form-builder')], 403);
+        }
+        $submission_id = isset($_POST['submission_id']) ? absint($_POST['submission_id']) : 0;
+        $submission = $submission_id ? DBFB_Submissions_Repository::get($submission_id) : null;
+        if (!$submission) {
+            wp_send_json_error(['message' => __('Risposta non trovata', 'db-form-builder')], 404);
+        }
+        if (($submission->status ?? '') === 'new') {
+            DBFB_Submissions_Repository::set_status([$submission_id], 'read');
+        }
+        wp_send_json_success(['status' => ($submission->status ?? '') === 'new' ? 'read' : (string) ($submission->status ?? '')]);
     }
 
     public static function ajax_export_csv() {
@@ -62,16 +95,11 @@ class DBFB_Submissions {
         $form_id = intval($_GET['form_id'] ?? 0);
         if (!$form_id) wp_die('Form non valido');
 
-        global $wpdb;
-        $table = $wpdb->prefix . 'dbfb_submissions';
-
         $form = get_post($form_id);
         $form_fields_raw = get_post_meta($form_id, '_dbfb_fields', true) ?: [];
 
-        $submissions = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $table WHERE form_id = %d ORDER BY submitted_at DESC",
-            $form_id
-        ));
+        // 2.19.0: tutte le risposte del form, più recenti prima.
+        $submissions = DBFB_Submissions_Repository::query(['form_id' => $form_id, 'per_page' => 0])['rows'];
 
         // Snapshot-aware columns (2.6.0): unione di tutti i field apparsi
         // in qualsiasi submission (via snapshot) + i field correnti del form.

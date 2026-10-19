@@ -51,6 +51,8 @@ class DB_Form_Builder {
 
         // Submissions
         add_action('wp_ajax_dbfb_export_csv', ['DBFB_Submissions', 'ajax_export_csv']);
+        // 2.19.0: aprire il dettaglio segna la risposta come letta.
+        add_action('wp_ajax_dbfb_mark_submission_read', ['DBFB_Submissions', 'ajax_mark_read']);
         // 2.13.0: download allegati solo via admin (capability + nonce).
         // Il nopriv rimanda al login invece di restituire una pagina vuota.
         add_action('admin_post_dbfb_download', ['DBFB_Submissions', 'handle_attachment_download']);
@@ -108,6 +110,9 @@ class DB_Form_Builder {
 
         // Import / export dei form come file JSON (2.18.0).
         DBFB_Import_Export::init();
+
+        // Repository delle risposte (2.19.0): backfill di subject_hash.
+        DBFB_Submissions_Repository::init();
     }
 
     // =========================================================
@@ -341,8 +346,10 @@ class DB_Form_Builder {
                 form_id bigint(20) NOT NULL,
                 data longtext NOT NULL,
                 submitted_at datetime DEFAULT CURRENT_TIMESTAMP,
+                status varchar(20) NOT NULL DEFAULT 'new',
                 ip_address varchar(45),
                 ip_hash varchar(64),
+                subject_hash char(64) DEFAULT NULL,
                 gdpr_consent_given tinyint(1) DEFAULT NULL,
                 gdpr_consent_text text,
                 gdpr_consent_timestamp datetime DEFAULT NULL,
@@ -350,7 +357,9 @@ class DB_Form_Builder {
                 gdpr_consent_policy_version bigint(20) UNSIGNED DEFAULT 0,
                 PRIMARY KEY (id),
                 KEY form_id (form_id),
+                KEY form_status (form_id, status),
                 KEY submitted_at (submitted_at),
+                KEY subject_hash (subject_hash),
                 KEY gdpr_consent_policy_version (gdpr_consent_policy_version)
             ) $charset_collate;";
             dbDelta($sql);
@@ -402,7 +411,7 @@ class DB_Form_Builder {
      * admin_init e in attivazione, quindi anche installazioni in
      * mu-plugins o WP-CLI bulk hanno lo schema corretto.
      */
-    const SCHEMA_VERSION = 6;
+    const SCHEMA_VERSION = 7;
 
     /**
      * Aggiorna lo schema esistente da versioni precedenti.
@@ -413,6 +422,8 @@ class DB_Form_Builder {
      *  - v3 → v4 (2.11.0): colonne prova del consenso gdpr_consent_*
      *  - v4 → v5 (2.13.0): riesecuzione idempotente di tutti i passi (riparazione)
      *  - v5 → v6 (2.16.0): tabella wp_dbfb_consents (consensi facoltativi)
+     *  - v6 → v7 (2.19.0): colonne status e subject_hash, indici form_status
+     *    e subject_hash, backfill di subject_hash via cron
      *
      * Le submission esistenti mantengono il loro ip_address in chiaro
      * (backward compat). Per le nuove submission, il salvataggio popolerà
@@ -494,6 +505,34 @@ class DB_Form_Builder {
         // create_table() controlla l'esistenza (SHOW TABLES) prima di creare.
         if ($current < 6) {
             DBFB_Consents::create_table();
+        }
+
+        // v6 → v7 (Form Builder 2.19.0): stato della risposta e hash
+        // dell'interessato (vedi DBFB_Submissions_Repository).
+        if ($current < 7) {
+            if (!$wpdb->get_var("SHOW COLUMNS FROM $table LIKE 'status'")) {
+                // Le risposte già presenti partono come lette: altrimenti
+                // l'archivio intero comparirebbe come "nuovo". Limite sull'id
+                // letto prima dell'ALTER, così un invio arrivato nel frattempo
+                // resta 'new'.
+                $max_id = (int) $wpdb->get_var("SELECT MAX(id) FROM $table");
+                $wpdb->query("ALTER TABLE $table ADD COLUMN status varchar(20) NOT NULL DEFAULT 'new' AFTER submitted_at");
+                if ($max_id > 0) {
+                    $wpdb->query($wpdb->prepare("UPDATE $table SET status = 'read' WHERE id <= %d", $max_id));
+                }
+            }
+            if (!$wpdb->get_var("SHOW COLUMNS FROM $table LIKE 'subject_hash'")) {
+                // NULL = da calcolare: lo riempie il cron di backfill a batch.
+                $wpdb->query("ALTER TABLE $table ADD COLUMN subject_hash char(64) DEFAULT NULL AFTER ip_hash");
+            }
+            if (!$wpdb->get_var("SHOW INDEX FROM $table WHERE Key_name = 'form_status'")) {
+                $wpdb->query("ALTER TABLE $table ADD INDEX form_status (form_id, status)");
+            }
+            if (!$wpdb->get_var("SHOW INDEX FROM $table WHERE Key_name = 'subject_hash'")) {
+                $wpdb->query("ALTER TABLE $table ADD INDEX subject_hash (subject_hash)");
+            }
+            DBFB_Submissions_Repository::columns(true);
+            DBFB_Submissions_Repository::maybe_schedule_backfill();
         }
 
         update_option('dbfb_schema_version', self::SCHEMA_VERSION);
@@ -984,53 +1023,35 @@ class DB_Form_Builder {
             }
             if (!current_user_can('manage_options')) wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
 
-            global $wpdb;
-            $table = $wpdb->prefix . 'dbfb_submissions';
-
-            // 2.4.0: cancella i file allegati prima del DELETE.
-            $submission = $wpdb->get_row($wpdb->prepare(
-                "SELECT id, data FROM $table WHERE id = %d", $submission_id
-            ));
-            if ($submission) {
-                self::delete_submission_files($submission);
-            }
-            self::delete_submission_deliveries([$submission_id]);
-            DBFB_Consents::delete_for_submissions([$submission_id]);
-
-            $wpdb->delete($table, ['id' => $submission_id], ['%d']);
-            $redirect_page = $form_id ? 'dbfb-forms&action=submissions&form_id=' . $form_id : 'dbfb-submissions';
-            wp_safe_redirect(admin_url('admin.php?page=' . $redirect_page . '&sub_deleted=1'));
+            // Allegati, deliveries e consensi insieme alla riga (2.19.0: repository).
+            DBFB_Submissions_Repository::delete([$submission_id]);
+            wp_safe_redirect(self::submissions_redirect_url($form_id, ['sub_deleted' => 1]));
             exit;
         }
 
-        // Bulk delete submissions
-        if (isset($_POST['dbfb_bulk_action']) && $_POST['dbfb_bulk_action'] === 'delete' && !empty($_POST['submission_ids'])) {
+        // Azioni di massa sulle risposte selezionate: elimina (2.2.0) e
+        // cambio di stato (2.19.0).
+        $bulk_status = ['mark_read' => 'read', 'mark_new' => 'new', 'archive' => 'archived'];
+        $bulk_action = isset($_POST['dbfb_bulk_action']) ? sanitize_key(wp_unslash($_POST['dbfb_bulk_action'])) : '';
+        if (($bulk_action === 'delete' || isset($bulk_status[$bulk_action])) && !empty($_POST['submission_ids'])) {
             $form_id = intval($_POST['form_id'] ?? 0);
             if (!isset($_POST['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'dbfb_bulk_submissions')) {
                 wp_die(esc_html__('Azione non autorizzata', 'db-form-builder'));
             }
             if (!current_user_can('manage_options')) wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
 
-            global $wpdb;
-            $table = $wpdb->prefix . 'dbfb_submissions';
-            $ids = array_map('intval', (array) $_POST['submission_ids']);
-            $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+            $ids = array_map('intval', (array) wp_unslash($_POST['submission_ids']));
+            // La vista di provenienza (filtro di stato) resta selezionata.
+            $view = isset($_POST['status']) ? sanitize_key(wp_unslash($_POST['status'])) : '';
+            $args = DBFB_Submissions_Repository::is_valid_status($view) ? ['status' => $view] : [];
 
-            // 2.4.0: cancella i file allegati prima del DELETE bulk.
-            $rows = $wpdb->get_results($wpdb->prepare(
-                // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $placeholders.
-                "SELECT id, data FROM $table WHERE id IN ($placeholders)", $ids
-            ));
-            foreach ($rows as $row) {
-                self::delete_submission_files($row);
+            if ($bulk_action === 'delete') {
+                $args['sub_deleted'] = DBFB_Submissions_Repository::delete($ids)['rows'];
+            } else {
+                DBFB_Submissions_Repository::set_status($ids, $bulk_status[$bulk_action]);
+                $args['sub_status'] = count($ids);
             }
-            self::delete_submission_deliveries($ids);
-            DBFB_Consents::delete_for_submissions($ids);
-
-            // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d generati in $placeholders.
-            $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE id IN ($placeholders)", $ids));
-            $redirect_page = $form_id ? 'dbfb-forms&action=submissions&form_id=' . $form_id : 'dbfb-submissions';
-            wp_safe_redirect(admin_url('admin.php?page=' . $redirect_page . '&sub_deleted=' . count($ids)));
+            wp_safe_redirect(self::submissions_redirect_url($form_id, $args));
             exit;
         }
 
@@ -1046,22 +1067,31 @@ class DB_Form_Builder {
             }
             if (!current_user_can('manage_options')) wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
 
-            global $wpdb;
-            $table = $wpdb->prefix . 'dbfb_submissions';
-
             // Conta prima per il messaggio di conferma post-redirect.
-            $count = (int) $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM $table WHERE form_id = %d", $form_id
-            ));
+            $count = array_sum(DBFB_Submissions_Repository::counts_by_status($form_id));
 
             // 2.4.0: cancella i file allegati di TUTTE le submission del form.
             // 2.11.2: logica spostata in delete_form_submissions(), riusata
             // anche dall'eliminazione del form; include le webhook deliveries.
             self::delete_form_submissions($form_id);
 
-            wp_safe_redirect(admin_url('admin.php?page=dbfb-forms&action=submissions&form_id=' . $form_id . '&sub_deleted=' . $count));
+            wp_safe_redirect(self::submissions_redirect_url($form_id, ['sub_deleted' => $count]));
             exit;
         }
+    }
+
+    /**
+     * URL della vista Risposte dopo un'azione (2.19.0).
+     *
+     * @param int   $form_id 0 = elenco dei form.
+     * @param array $args    Parametri aggiuntivi (esito, filtro di stato).
+     * @return string
+     */
+    private static function submissions_redirect_url($form_id, $args = []) {
+        $base = $form_id
+            ? admin_url('admin.php?page=dbfb-forms&action=submissions&form_id=' . (int) $form_id)
+            : admin_url('admin.php?page=dbfb-submissions');
+        return add_query_arg(array_map('rawurlencode', array_map('strval', $args)), $base);
     }
 
     // =========================================================
@@ -1462,33 +1492,23 @@ class DB_Form_Builder {
      * @return void
      */
     public static function delete_form_submissions($form_id) {
+        // 2.19.0: logica nel repository, metodo mantenuto per compatibilità.
+        DBFB_Submissions_Repository::delete_by_form($form_id);
+    }
+
+    /**
+     * Cancella le webhook deliveries di un form (2.19.0, prima dentro
+     * delete_form_submissions()).
+     *
+     * @param int $form_id
+     * @return void
+     */
+    public static function delete_form_deliveries($form_id) {
+        if (!self::deliveries_table_exists()) return;
+
         global $wpdb;
-        $form_id = (int) $form_id;
-        $table = $wpdb->prefix . 'dbfb_submissions';
-
-        $offset = 0;
-        $batch  = 100;
-        do {
-            $rows = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, data FROM $table WHERE form_id = %d ORDER BY id ASC LIMIT %d OFFSET %d",
-                $form_id, $batch, $offset
-            ));
-            foreach ($rows as $row) {
-                self::delete_submission_files($row);
-            }
-            $offset += $batch;
-        } while (count($rows) === $batch);
-
-        $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE form_id = %d", $form_id));
-
-        // 2.16.0: anche i consensi facoltativi del form, compresi quelli
-        // sopravvissuti alla retention (cancellazione esplicita dell'admin).
-        DBFB_Consents::delete_for_form($form_id);
-
-        if (self::deliveries_table_exists()) {
-            $deliveries = $wpdb->prefix . 'dbfb_webhook_deliveries';
-            $wpdb->query($wpdb->prepare("DELETE FROM $deliveries WHERE form_id = %d", $form_id));
-        }
+        $deliveries = $wpdb->prefix . 'dbfb_webhook_deliveries';
+        $wpdb->query($wpdb->prepare("DELETE FROM $deliveries WHERE form_id = %d", (int) $form_id));
     }
 
     /**

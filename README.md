@@ -33,7 +33,7 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
 - **Email personalizzabili** — Conferma utente + notifica admin (più destinatari) con placeholder dinamici, inseribili con un clic dall'editor (2.12.0+)
 - **Documenti nella conferma (2.14.0+)** — Uno o più file della Media Library (regolamento, brochure, modulo) inviati come link nell'email di conferma con il segnaposto `{documenti}`
 - **Colori personalizzabili (2.12.0+)** — Sfondo, pulsanti e testo del form, globali o per singolo form, con contrasto WCAG AA garantito sui pulsanti e avviso sul testo
-- **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, allegati scaricabili solo dall'admin (2.13.0+)
+- **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, allegati scaricabili solo dall'admin (2.13.0+), stato nuova/letta/archiviata con filtri e paginazione (2.19.0+)
 - **Aggiornamenti automatici** — da GitHub Releases, direttamente in Plugin → Aggiornamenti (2.13.0+)
 - **Duplica form** — Copia campi e impostazioni con un click
 - **Esporta / importa form (2.18.0+)** — Un form come file `.json`, per passarlo da un sito di test alla produzione
@@ -208,6 +208,7 @@ Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)
 Action:
 - `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
 - `dbfb_consent_revoked($consent_id, $consent_key, $submission_id)` — un consenso facoltativo è stato revocato, dal link email o da admin (2.16.0+). Per sincronizzare CRM e newsletter.
+- `dbfb_submission_saved($submission_id, $form_id, $form_data)` — una risposta è stata salvata, dopo email e webhook (2.19.0+). Per notifiche e integrazioni. `$form_data` contiene dati personali: non va scritto nei log.
 
 ## Installazione
 
@@ -432,7 +433,9 @@ Cosa succede durante l'import:
 L'avviso dopo l'import elenca tutto ciò che è stato cambiato o va ricontrollato.
 
 ### Risposte
-Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
+Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV.
+
+Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. Le risposte arrivano come nuove e diventano lette all'apertura del dettaglio; con le azioni di massa si possono segnare come lette, rimettere tra le nuove o archiviare. I tab in cima alla tabella filtrano per stato, la tabella mostra 50 risposte per pagina e l'elenco dei form indica quante risposte nuove ha ciascuno. Lo stato serve solo all'organizzazione: la retention cancella anche le risposte archiviate.
 
 ## Accessibilità (WCAG 2.1 AA)
 
@@ -448,6 +451,17 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.19.0 — Stato delle risposte e repository
+
+Migrazione dello schema v6 → v7, automatica e idempotente. Le risposte già presenti diventano "lette".
+
+- **Stato della risposta:** nuova colonna `status` (`new`, `read`, `archived`). In Risposte: badge di stato, tab di filtro con i conteggi, azioni di massa "Segna come lette / come nuove / Archivia"; aprire il dettaglio di una risposta nuova la segna come letta. L'elenco dei form mostra quante risposte nuove ha ciascuno.
+- **Paginazione:** la pagina di un form mostra 50 risposte alla volta; prima caricava tutte le risposte in una sola pagina. L'elenco dei form calcola i totali con una query sola invece di una per form.
+- **Interessato indicizzato:** nuova colonna `subject_hash`, HMAC-SHA256 dell'email dell'interessato con lo stesso segreto dei consensi facoltativi. Nessuna email in chiaro in più nel database. Le risposte esistenti vengono completate a batch da un cron (`dbfb_backfill_subject_hash`, 500 righe al minuto). Prepara il collegamento ai clienti WooCommerce.
+- **`DBFB_Submissions_Repository`:** un'unica classe per leggere, contare, scrivere e cancellare le risposte. La cancellazione (riga, allegati, webhook deliveries, consensi) passa da un solo punto per eliminazione singola, multipla, totale, eliminazione del form ed eraser DSAR. `DB_Form_Builder::delete_form_submissions()` resta come wrapper.
+- **Salvataggio più robusto:** l'INSERT scarta le colonne che una migrazione non riuscita non ha creato, invece di perdere la risposta.
+- **Nuova action `dbfb_submission_saved`** dopo il salvataggio di una risposta.
 
 ### 2.18.3 — PHPCS a zero warning
 
@@ -820,6 +834,7 @@ db-form-builder/
 │   ├── class-builder.php            # Form builder, save, sanitize, templates
 │   ├── class-submit.php             # Submit, honeypot, GDPR, reCAPTCHA gating, file upload, webhook
 │   ├── class-submissions.php        # Risposte, CSV export, download protetto allegati
+│   ├── class-submissions-repository.php # Accesso unico alla tabella risposte: query, stato, cancellazione, subject_hash (2.19.0+)
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)
