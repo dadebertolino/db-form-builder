@@ -113,6 +113,10 @@ class DB_Form_Builder {
 
         // Repository delle risposte (2.19.0): backfill di subject_hash.
         DBFB_Submissions_Repository::init();
+
+        // Capability, ruolo "Gestore form" e API REST dbfb/v1 (2.20.0).
+        DBFB_Roles::init();
+        DBFB_REST::init();
     }
 
     // =========================================================
@@ -125,6 +129,7 @@ class DB_Form_Builder {
         self::schedule_cleanup_cron();
         self::schedule_deliveries_cleanup_cron();
         self::maybe_protect_uploads();
+        DBFB_Roles::install();
     }
 
     /**

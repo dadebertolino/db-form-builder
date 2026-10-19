@@ -185,6 +185,35 @@ Le richieste DSAR includono i consensi facoltativi: l'export li riporta in un gr
 
 Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)`). Letta dal Privacy Hub per decidere se inserire la menzione "procedura DSAR semplificata via Strumenti → Esporta/Cancella dati personali" nella sezione "Diritti dell'interessato" della Privacy Policy generata.
 
+## API REST (2.20.0+)
+
+Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
+
+| Metodo | Rotta | Uso |
+|---|---|---|
+| `GET` | `/wp-json/dbfb/v1/forms` | Form con totale e numero di risposte nuove |
+| `GET` | `/wp-json/dbfb/v1/submissions` | Risposte, più recenti prima. Parametri: `form_id`, `status` (`new`, `read`, `archived`), `since_id`, `page`, `per_page` (max 100). Totali negli header `X-WP-Total` e `X-WP-TotalPages`. Ogni voce ha solo un'anteprima, non i dati completi |
+| `GET` | `/wp-json/dbfb/v1/submissions/{id}` | Dettaglio: campi (con l'etichetta salvata al momento dell'invio), allegati, prova del consenso, consensi facoltativi, provenienza |
+| `PATCH` | `/wp-json/dbfb/v1/submissions/{id}` | Cambio di stato: `{"status": "read"}` |
+| `GET` | `/wp-json/dbfb/v1/stats` | Risposte per giorno e per form. Parametri: `days` (1–365, default 30), `form_id` |
+
+**Accesso:** serve la capability `dbfb_view_submissions`, che hanno l'amministratore e il nuovo ruolo **Gestore form**. Il ruolo non ha altri permessi: può consultare le risposte e cambiarne lo stato, ma non vede form, impostazioni, contenuti o utenti. Autenticazione standard di WordPress: cookie + nonce `wp_rest` dalle pagine del sito, [Application Passwords](https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/) per i client esterni (Utenti → Profilo → Password applicazione).
+
+```bash
+curl -u "utente:xxxx xxxx xxxx xxxx xxxx xxxx" \
+  "https://example.com/wp-json/dbfb/v1/submissions?status=new&per_page=10"
+```
+
+**Privacy e sicurezza:**
+- header `Cache-Control: no-store` su tutte le risposte del namespace;
+- niente IP nel dettaglio;
+- allegati solo tramite link firmati che scadono dopo 15 minuti;
+- rate limit per utente: 120 richieste al minuto, regolabile con i filter `dbfb_rest_rate_limit` e `dbfb_rest_rate_window`. Oltre il limite si riceve `429`.
+
+**Nota:** alcuni plugin di sicurezza bloccano `/wp-json/` o disattivano le Application Passwords. Se le chiamate rispondono `401` o `404` con le credenziali giuste, controlla le loro impostazioni.
+
+`submitted_at` è nel formato `Y-m-d H:i:s` con l'orologio del database, lo stesso mostrato nell'admin.
+
 ## Filter pubblici
 
 | Filter | Default | Uso |
@@ -204,6 +233,8 @@ Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)
 | `dbfb_attribution_consent_category` | `'marketing'` | Categoria di consenso richiesta per le chiavi non `utm_*` (2.17.0+) |
 | `dbfb_revoke_rate_limit` | `20` | Richieste massime per IP alla pagina di revoca dei consensi nella finestra (2.16.0+, `0` = disattivato) |
 | `dbfb_revoke_rate_window` | `600` | Durata in secondi della finestra del limite precedente (2.16.0+) |
+| `dbfb_rest_rate_limit` | `120` | Richieste massime per utente alle API REST `dbfb/v1` nella finestra (2.20.0+, `0` = disattivato) |
+| `dbfb_rest_rate_window` | `60` | Durata in secondi della finestra del limite precedente (2.20.0+) |
 
 Action:
 - `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
@@ -451,6 +482,15 @@ Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. 
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.20.0 — API REST e ruolo "Gestore form"
+
+Nessuna migrazione dello schema. Capability e ruolo si installano da soli al primo accesso all'admin dopo l'aggiornamento.
+
+- **API REST `dbfb/v1`:** form, risposte paginate con filtri per form, stato e `since_id`, dettaglio, cambio di stato, statistiche per giorno. Vedi la sezione "API REST".
+- **Capability `dbfb_view_submissions`** assegnata all'amministratore, e nuovo **ruolo "Gestore form"** che ha solo questa capability (più `read`). Disinstallando il plugin si rimuovono entrambi.
+- **Sicurezza:** permessi verificati su ogni rotta, parametri validati dallo schema (`400` se non validi), rate limit per utente, header `no-store`, allegati solo con link firmati di 15 minuti, niente IP.
+- `DBFB_Submissions::signed_attachment_url()` accetta una durata del link (secondo parametro, facoltativo).
 
 ### 2.19.0 — Stato delle risposte e repository
 
@@ -835,6 +875,8 @@ db-form-builder/
 │   ├── class-submit.php             # Submit, honeypot, GDPR, reCAPTCHA gating, file upload, webhook
 │   ├── class-submissions.php        # Risposte, CSV export, download protetto allegati
 │   ├── class-submissions-repository.php # Accesso unico alla tabella risposte: query, stato, cancellazione, subject_hash (2.19.0+)
+│   ├── class-roles.php              # Capability dbfb_view_submissions e ruolo "Gestore form" (2.20.0+)
+│   ├── class-rest.php               # API REST dbfb/v1 (2.20.0+)
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)

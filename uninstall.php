@@ -14,6 +14,8 @@
  *    - Disschedula i cron dbfb_cleanup_submissions, dbfb_cleanup_deliveries
  *      e i dispatch dbfb_webhook_dispatch in coda (2.13.0), il backfill
  *      dbfb_backfill_subject_hash (2.19.0)
+ *    - Rimuove la capability dbfb_view_submissions e il ruolo "Gestore
+ *      form" (2.20.0)
  *    - Pulisce i transient dbfb_rate_*
  *    - LASCIA INTATTI: tabelle submissions e webhook deliveries, post type
  *      dbfb_form + relativi post meta, allegati in uploads/dbfb/
@@ -86,6 +88,16 @@ delete_option('dbfb_schema_version');
 delete_option('dbfb_uploads_protection');
 delete_option('dbfb_file_link_secret');
 delete_option('dbfb_subject_backfill');
+
+// 2.20.0: capability dbfb_view_submissions e ruolo "Gestore form". Sono
+// configurazione del plugin, non dati: si rimuovono anche nella pulizia soft.
+foreach (wp_roles()->role_objects as $dbfb_role) {
+    if ($dbfb_role->has_cap('dbfb_view_submissions')) {
+        $dbfb_role->remove_cap('dbfb_view_submissions');
+    }
+}
+remove_role('dbfb_manager');
+delete_option('dbfb_roles_version');
 
 // 2.3 — Transient di rate limit. dbfb_rate_* sono creati con set_transient
 // a runtime, quindi vivono in wp_options come _transient_dbfb_rate_*.

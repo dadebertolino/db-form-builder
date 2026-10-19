@@ -506,15 +506,21 @@ class DBFB_Submissions {
      *
      * Non richiede login: chi ha il link può scaricare il file fino alla
      * scadenza (default 7 giorni, filter dbfb_webhook_file_link_ttl). Va
-     * usato SOLO nel payload dei webhook, mai in pagine o email.
+     * usato SOLO nel payload dei webhook e nelle API REST, mai in pagine o
+     * email.
      *
-     * @param array $entry Entry di un campo file ({url, name, size, path}).
+     * 2.20.0: anche per i dettagli delle API REST, con $ttl breve.
+     *
+     * @param array    $entry Entry di un campo file ({url, name, size, path}).
+     * @param int|null $ttl   Validità in secondi; null = quella dei webhook.
      * @return string URL o '' se l'allegato non è risolvibile.
      */
-    public static function signed_attachment_url($entry) {
+    public static function signed_attachment_url($entry, $ttl = null) {
         $relative = self::attachment_relative_path($entry);
         if ($relative === '') return '';
-        $ttl = (int) apply_filters('dbfb_webhook_file_link_ttl', 7 * DAY_IN_SECONDS, $relative);
+        $ttl = $ttl !== null
+            ? (int) $ttl
+            : (int) apply_filters('dbfb_webhook_file_link_ttl', 7 * DAY_IN_SECONDS, $relative);
         if ($ttl <= 0) {
             $ttl = 7 * DAY_IN_SECONDS;
         }

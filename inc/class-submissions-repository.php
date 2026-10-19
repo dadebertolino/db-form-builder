@@ -316,6 +316,33 @@ class DBFB_Submissions_Repository {
         return $out;
     }
 
+    /**
+     * Risposte per giorno e per form negli ultimi N giorni (2.20.0).
+     *
+     * Il giorno è quello di submitted_at, cioè l'orologio del database
+     * (lo stesso usato dalla retention).
+     *
+     * @param int $days    Giorni, oggi compreso.
+     * @param int $form_id 0 = tutti i form.
+     * @return object[] {day: 'Y-m-d', form_id: int, n: int}
+     */
+    public static function stats_by_day($days, $form_id = 0) {
+        global $wpdb;
+        $table  = self::table();
+        $days   = max(1, (int) $days);
+        $where  = 'submitted_at >= DATE_SUB(CURDATE(), INTERVAL %d DAY)';
+        $params = array($days - 1);
+        if ((int) $form_id > 0) {
+            $where   .= ' AND form_id = %d';
+            $params[] = (int) $form_id;
+        }
+        return (array) $wpdb->get_results($wpdb->prepare(
+            // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- placeholder %d in $where.
+            "SELECT DATE(submitted_at) AS day, form_id, COUNT(*) AS n FROM $table WHERE $where GROUP BY DATE(submitted_at), form_id ORDER BY day ASC",
+            $params
+        ));
+    }
+
     // =========================================================
     // INTERESSATO (subject_hash)
     // =========================================================
