@@ -32,6 +32,7 @@
  *    - DROP TABLE wp_dbfb_submissions (cancella TUTTE le submission)
  *    - DROP TABLE wp_dbfb_webhook_deliveries (2.13.0)
  *    - DROP TABLE wp_dbfb_consents + option dbfb_consent_secret (2.16.0)
+ *    - DROP TABLE wp_dbfb_links (2.24.0; gli ordini WooCommerce restano)
  *    - wp_delete_post() force=true su tutti i post di tipo dbfb_form
  *      (cancella i form definiti + i loro post meta automaticamente)
  *    - Pulizia della cartella wp-content/uploads/dbfb/ (file di sicurezza
@@ -184,6 +185,11 @@ if ($hard_delete) {
     $table_consents = $wpdb->prefix . 'dbfb_consents';
     $wpdb->query("DROP TABLE IF EXISTS `{$table_consents}`");
     delete_option('dbfb_consent_secret');
+
+    // 3.2d — DROP della tabella dei collegamenti risposta → ordine (2.24.0).
+    // Gli ordini WooCommerce restano: hanno le proprie regole di conservazione.
+    $table_links = $wpdb->prefix . 'dbfb_links';
+    $wpdb->query("DROP TABLE IF EXISTS `{$table_links}`");
 
     // 3.3 — Cancellazione di tutti i form definiti (CPT dbfb_form).
     // Usiamo wp_delete_post(force=true) per skippare il cestino e cancellare

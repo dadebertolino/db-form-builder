@@ -268,7 +268,13 @@ if (!class_exists('DBFB_Privacy_Declarations')) {
                 $register[] = self::build_marketing_entry($features);
             }
 
-            /* ---- 6. Notifiche al personale (2.22.0) ----------------------- */
+            /* ---- 6. Collegamento con WooCommerce (2.23.0) ------------------ */
+            $woo = class_exists('DBFB_Woo') ? DBFB_Woo::privacy_entry() : null;
+            if ($woo) {
+                $register[] = $woo;
+            }
+
+            /* ---- 7. Notifiche al personale (2.22.0) ----------------------- */
             $notifications = class_exists('DBFB_Notifications') ? DBFB_Notifications::privacy_entry() : null;
             if ($notifications) {
                 $register[] = $notifications;

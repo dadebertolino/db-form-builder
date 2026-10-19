@@ -3,7 +3,7 @@
  * Plugin Name: DB Form Builder
  * Plugin URI: https://www.davidebertolino.it
  * Description: Form builder con drag & drop, logica condizionale, reCAPTCHA gated dal consenso, email personalizzabili, export CSV con header esplicativi. Privacy by design: IP hashato, retention con pulizia allegati, snapshot fields, integrazione DSAR WordPress + DB Privacy Hub, informativa privacy per singolo form, monitoraggio conformità consenso GDPR. Webhook async con retry + HMAC signing.
- * Version: 2.23.0
+ * Version: 2.24.0
  * Author: Davide Bertolino
  * Author URI: https://www.davidebertolino.it
  * Text Domain: db-form-builder
@@ -14,7 +14,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DBFB_VERSION', '2.23.0');
+define('DBFB_VERSION', '2.24.0');
 define('DBFB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DBFB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBFB_PLUGIN_FILE', __FILE__);
@@ -58,6 +58,8 @@ require_once DBFB_PLUGIN_DIR . 'inc/class-submit.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-submissions.php';
 // Accesso unico alla tabella delle risposte (2.19.0).
 require_once DBFB_PLUGIN_DIR . 'inc/class-submissions-repository.php';
+// Collegamenti risposta → oggetti esterni, es. ordini WooCommerce (2.24.0).
+require_once DBFB_PLUGIN_DIR . 'inc/class-links.php';
 // API REST dbfb/v1 e capability per consultare le risposte (2.20.0).
 require_once DBFB_PLUGIN_DIR . 'inc/class-roles.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-rest.php';
@@ -103,7 +105,9 @@ add_action('before_woocommerce_init', function () {
 add_action('plugins_loaded', function () {
     if (!class_exists('WooCommerce')) return;
     require_once DBFB_PLUGIN_DIR . 'inc/woo/class-woo.php';
+    require_once DBFB_PLUGIN_DIR . 'inc/woo/class-woo-order-builder.php';
     DBFB_Woo::init();
+    DBFB_Woo_Order_Builder::init();
 });
 
 // Init

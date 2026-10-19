@@ -14,6 +14,7 @@
  * sull'icona (Badging API), notifiche push attivabili per dispositivo.
  * 2.23.0: con WooCommerce, #/o (ordini del negozio) e ordini del cliente
  * nel dettaglio di una risposta.
+ * 2.24.0: #/s/{id}/ordine, ordine "in attesa di pagamento" da una risposta.
  */
 (function () {
     'use strict';
@@ -105,7 +106,7 @@
     }
 
     function AuthError(status) { this.status = status; }
-    function ApiError(status, code) { this.status = status; this.code = code; }
+    function ApiError(status, code, message, data) { this.status = status; this.code = code; this.message = message || ''; this.data = data || {}; }
 
     // =========================================================
     // API
@@ -160,7 +161,7 @@
                 }
                 if (r.status === 401 || code === 'rest_cookie_invalid_nonce') throw new AuthError(401);
                 if (r.status === 403) throw new AuthError(403);
-                throw new ApiError(r.status, code);
+                throw new ApiError(r.status, code, data && data.message, data && data.data);
             });
         });
     }
@@ -502,12 +503,176 @@
                     ? h('ul', { 'class': 'list' }, d.orders.map(orderItem))
                     : h('p', { 'class': 'muted', text: S.noCustomerOrders }));
             }
+            if (me && me.woo && me.woo.create) {
+                section.appendChild(h('div', { 'class': 'actions' },
+                    h('a', { 'class': 'btn primary', href: '#/s/' + s.id + '/ordine', text: S.createOrder })
+                ));
+            }
             section.setAttribute('aria-busy', 'false');
         }).catch(function () {
             section.lastChild.textContent = S.error;
             section.setAttribute('aria-busy', 'false');
         });
         return section;
+    }
+
+    // ---- Ordine da una risposta (2.24.0) ----
+    function field(id, label, value, attrs) {
+        attrs = attrs || {};
+        var input = h(attrs.tag || 'input', Object.assign({ id: id, name: id, 'class': 'input' }, attrs.input || {}));
+        if (attrs.tag === 'select') {
+            Object.keys(attrs.options || {}).forEach(function (k) {
+                input.appendChild(h('option', { value: k, selected: k === value ? true : null, text: attrs.options[k] }));
+            });
+        } else if (attrs.tag === 'textarea') {
+            input.value = value || '';
+        } else {
+            input.value = value || '';
+        }
+        var labelEl = h('label', { 'for': id }, label, attrs.required ? h('span', { 'class': 'req', text: ' (' + S.required + ')' }) : null);
+        var hint = attrs.hint ? h('p', { 'class': 'hint', id: id + '-hint', text: attrs.hint }) : null;
+        if (hint) input.setAttribute('aria-describedby', id + '-hint');
+        if (attrs.required) input.required = true;
+        return h('div', { 'class': 'field' }, labelEl, input, hint, h('p', { 'class': 'field-error', id: id + '-error', hidden: true }));
+    }
+
+    function viewCreateOrder(token, id) {
+        return api('submissions/' + id + '/order-draft').then(function (res) {
+            if (token !== renderToken) return;
+            var d = res.data;
+            var b = d.billing;
+            var back = '#/s/' + id;
+            var form = h('form', { 'class': 'order-form', novalidate: true });
+            var status = h('p', { 'class': 'form-status', role: 'status' });
+            var submit = h('button', { type: 'submit', 'class': 'btn primary', text: S.createOrder });
+
+            form.appendChild(h('fieldset', null,
+                h('legend', { text: S.billing }),
+                h('p', { 'class': 'hint', text: S.billingHint }),
+                h('div', { 'class': 'grid' },
+                    field('first_name', S.firstName, b.first_name, { input: { autocomplete: 'off' } }),
+                    field('last_name', S.lastName, b.last_name, { input: { autocomplete: 'off' } }),
+                    field('company', S.company, b.company, { input: { autocomplete: 'off' } }),
+                    field('email', S.email, b.email, { input: { type: 'email', autocomplete: 'off', inputmode: 'email' } }),
+                    field('phone', S.phone, b.phone, { input: { type: 'tel', autocomplete: 'off' } }),
+                    field('address_1', S.address1, b.address_1, { input: { autocomplete: 'off' } }),
+                    field('address_2', S.address2, b.address_2, { input: { autocomplete: 'off' } }),
+                    field('city', S.city, b.city, { input: { autocomplete: 'off' } }),
+                    field('postcode', S.postcode, b.postcode, { input: { autocomplete: 'off', inputmode: 'numeric' } }),
+                    field('state', S.state, b.state, { input: { autocomplete: 'off' } }),
+                    field('country', S.country, b.country, { tag: 'select', options: d.countries })
+                )
+            ));
+            form.appendChild(h('fieldset', null,
+                h('legend', { text: S.orderLine }),
+                field('description', S.description, d.description, { required: true, input: { maxlength: '200' } }),
+                field('amount', sprintf(S.amount, d.currency_symbol), '', {
+                    required: true,
+                    input: { inputmode: 'decimal', autocomplete: 'off' },
+                    hint: d.tax_enabled ? (d.prices_include_tax ? S.taxIncluded : S.taxExcluded) : null
+                }),
+                field('note', S.internalNote, '', { tag: 'textarea', input: { rows: '3', maxlength: '2000' } })
+            ));
+            var sendBox = h('input', { type: 'checkbox', id: 'send_invoice', checked: b.email ? true : null });
+            form.appendChild(h('div', { 'class': 'check' }, sendBox, h('label', { 'for': 'send_invoice', text: S.sendInvoice })));
+            form.appendChild(h('div', { 'class': 'actions' }, submit, h('a', { 'class': 'btn', href: back, text: S.backToSubmission })));
+            form.appendChild(status);
+
+            function showError(fieldId, message) {
+                var input = form.querySelector('#' + fieldId);
+                var err = form.querySelector('#' + fieldId + '-error');
+                if (input && err) {
+                    err.textContent = message;
+                    err.hidden = false;
+                    input.setAttribute('aria-invalid', 'true');
+                    input.setAttribute('aria-describedby', (input.getAttribute('aria-describedby') || '').replace(fieldId + '-error', '').trim() + ' ' + fieldId + '-error');
+                    input.focus();
+                } else {
+                    status.textContent = message;
+                }
+            }
+
+            function clearErrors() {
+                Array.prototype.forEach.call(form.querySelectorAll('.field-error'), function (e) { e.hidden = true; e.textContent = ''; });
+                Array.prototype.forEach.call(form.querySelectorAll('[aria-invalid]'), function (e) { e.removeAttribute('aria-invalid'); });
+                status.textContent = '';
+            }
+
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                clearErrors();
+                var val = function (k) { return form.querySelector('#' + k).value.trim(); };
+                if (!val('description')) { showError('description', S.required); return; }
+                if (!val('amount')) { showError('amount', S.required); return; }
+                var billing = {};
+                ['first_name', 'last_name', 'company', 'email', 'phone', 'address_1', 'address_2', 'city', 'postcode', 'state', 'country'].forEach(function (k) { billing[k] = val(k); });
+                submit.disabled = true;
+                status.textContent = S.creating;
+                api('submissions/' + id + '/orders', { method: 'POST', body: {
+                    billing: billing, description: val('description'), amount: val('amount'), note: val('note'), send_invoice: sendBox.checked
+                } }).then(function (r) {
+                    if (token !== renderToken) return;
+                    orderResultView(r.data, id);
+                }).catch(function (err) {
+                    submit.disabled = false;
+                    status.textContent = '';
+                    if (err instanceof AuthError) { errorView(err); return; }
+                    var target = err.data && err.data.field ? err.data.field : (err.data && err.data.params ? Object.keys(err.data.params)[0] : '');
+                    showError(target === 'billing' ? 'email' : target, err.message || S.error);
+                });
+            });
+
+            setView({ back: back, barTitle: S.createOrderTitle, docTitle: S.createOrderTitle }, [
+                h('h1', { tabindex: '-1', text: S.createOrderTitle }),
+                h('p', { 'class': 'subtitle', text: sprintf(S.submission, id) }),
+                d.linked_orders && d.linked_orders.length ? h('p', { 'class': 'banner', role: 'note', text: S.alreadyLinked }) : null,
+                form
+            ]);
+        });
+    }
+
+    function orderResultView(o, submissionId) {
+        var info = h('div', { 'class': 'card result' });
+        var sentLine = h('p', { role: 'status' });
+        function renderSent(sent) {
+            sentLine.textContent = sent ? sprintf(S.invoiceSent, o.email) : (o.email ? S.invoiceNotSent : '');
+        }
+        if (o.payment_url) {
+            var linkInput = h('input', { id: 'payment-url', 'class': 'input', readonly: true, value: o.payment_url });
+            info.appendChild(h('div', { 'class': 'field' }, h('label', { 'for': 'payment-url', text: S.paymentLink }), linkInput));
+            var actions = h('div', { 'class': 'actions' });
+            actions.appendChild(h('button', { type: 'button', 'class': 'btn', text: S.copy, onclick: function () {
+                var done = function () { announce(S.copied); };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(o.payment_url).then(done, function () { linkInput.select(); });
+                } else {
+                    linkInput.select();
+                }
+            } }));
+            if (!o.invoice_sent && o.email) {
+                actions.appendChild(h('button', { type: 'button', 'class': 'btn', text: S.sendInvoiceNow, onclick: function (e) {
+                    var btn = e.currentTarget;
+                    btn.disabled = true;
+                    api('orders/' + o.id + '/send-invoice', { method: 'POST' }).then(function (r) {
+                        renderSent(r.data.invoice_sent);
+                        if (r.data.invoice_sent) btn.remove(); else btn.disabled = false;
+                    }, function (err) { btn.disabled = false; announce(err.message || S.error); });
+                } }));
+            }
+            info.appendChild(actions);
+        }
+        if (o.invoice_sent || o.email) renderSent(o.invoice_sent);
+        info.appendChild(sentLine);
+        var title = sprintf(S.orderCreated, o.number);
+        setView({ back: '#/s/' + submissionId, barTitle: title, docTitle: title }, [
+            h('h1', { tabindex: '-1', text: title }),
+            h('p', { 'class': 'subtitle', text: o.total + ' · ' + (o.needs_payment ? S.pendingPayment : o.status_label) }),
+            info,
+            h('div', { 'class': 'actions' },
+                h('a', { 'class': 'btn', href: o.edit_url, target: '_blank', rel: 'noopener', text: S.openInWoo }),
+                h('a', { 'class': 'btn', href: '#/s/' + submissionId, text: S.backToSubmission })
+            )
+        ]);
     }
 
     // =========================================================
@@ -534,6 +699,8 @@
             var status = route.params.get('status') || '';
             if (['', 'new', 'read', 'archived'].indexOf(status) === -1) status = '';
             run = function () { return viewSubmissions(token, parseInt(seg[1], 10), status); };
+        } else if (seg[0] === 's' && /^\d+$/.test(seg[1] || '') && seg[2] === 'ordine') {
+            run = function () { return viewCreateOrder(token, parseInt(seg[1], 10)); };
         } else if (seg[0] === 'o') {
             run = function () { return viewOrders(token); };
         } else if (seg[0] === 's' && /^\d+$/.test(seg[1] || '')) {

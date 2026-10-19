@@ -193,6 +193,17 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                     );
                 }
 
+                // 2.24.0: ordini WooCommerce creati da questa risposta.
+                $linked_orders = class_exists('DBFB_Links') ? DBFB_Links::objects_for_submission((int) $row->id, 'wc_order') : array();
+                if ($linked_orders) {
+                    $items[] = array(
+                        'name'  => __('Ordini collegati', 'db-form-builder'),
+                        'value' => implode(', ', array_map(function ($id) {
+                            return '#' . (int) $id;
+                        }, $linked_orders)),
+                    );
+                }
+
                 // L'IP viene incluso solo se è disponibile (rispetta storage mode).
                 // 2.13.0: etichetta coerente con format_submission_ip(): "hash"
                 // solo se il valore è davvero l'hash, altrimenti IP in chiaro

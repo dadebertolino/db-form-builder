@@ -220,6 +220,17 @@ Con WooCommerce attivo la web app collega le risposte ai clienti del negozio. Il
 - **"Ordini del negozio"** in home: gli ultimi ordini, con "Carica altre".
 - **Permessi:** oltre all'accesso alle risposte serve la capability degli ordini di WooCommerce (`edit_shop_orders`, che hanno amministratore e Shop manager). Il ruolo "Gestore form" non vede gli ordini; per darglieli: `add_filter('dbfb_orders_capability', fn() => 'dbfb_view_submissions');` oppure aggiungi `edit_shop_orders` al ruolo.
 
+### Ordine da una risposta (2.24.0+)
+
+Pensato per i preventivi: dal dettaglio di una risposta, **"Crea ordine"**.
+
+1. Il modulo arriva precompilato con i dati di fatturazione ricavati dalla risposta: email dell'interessato, telefono (campo "Telefono" o etichetta telefono/cellulare), nome e cognome (anche da un unico campo "Nome e cognome"), azienda/ragione sociale, indirizzo, città/comune, CAP, provincia (convertita in sigla) e paese del negozio. Si controllano e correggono prima di creare.
+2. Una **riga personalizzata** (di default "Preventivo #ID — titolo del form") con l'**importo** inserito a mano: IVA inclusa o esclusa secondo l'impostazione del negozio, con le aliquote standard della sede. Accetta "1.250,50" e "1250.50".
+3. L'ordine nasce **"In attesa di pagamento"**, collegato al cliente registrato se l'email corrisponde, con una nota che indica la risposta di origine e chi l'ha creato. Totale e righe restano modificabili in WooCommerce.
+4. **Link di pagamento:** l'app lo mostra con il pulsante "Copia" e, se richiesto, WooCommerce invia al cliente l'email "Dettagli ordine" con il link. Se l'email non parte, l'app lo dice e si può riprovare.
+
+Collegamento nei due sensi: meta dell'ordine `_dbfb_submission_id` e tabella `wp_dbfb_links`. Il collegamento si cancella con la risposta (eliminazione, retention, richiesta GDPR); l'ordine resta, con le regole di conservazione di WooCommerce. Gli ordini collegati compaiono nell'export GDPR della risposta. Serve `edit_shop_orders` (filter `dbfb_create_order_capability`).
+
 ## API REST (2.20.0+)
 
 Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
@@ -234,6 +245,9 @@ Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
 | `GET` | `/wp-json/dbfb/v1/me` | Nome dell'utente e link di logout, per la web app (2.21.0+); dalla 2.22.0 anche la chiave VAPID e l'intervallo di aggiornamento |
 | `GET` | `/wp-json/dbfb/v1/orders` | Ultimi ordini WooCommerce, paginati (2.23.0+, serve `edit_shop_orders`) |
 | `GET` | `/wp-json/dbfb/v1/submissions/{id}/orders` | Ordini dello stesso cliente della risposta (2.23.0+, serve `edit_shop_orders`) |
+| `GET` | `/wp-json/dbfb/v1/submissions/{id}/order-draft` | Dati di fatturazione ricavati dalla risposta e descrizione proposta (2.24.0+) |
+| `POST` | `/wp-json/dbfb/v1/submissions/{id}/orders` | Crea l'ordine: `{"billing": {…}, "description": "…", "amount": "1.220,00", "note": "…", "send_invoice": true}` (2.24.0+) |
+| `POST` | `/wp-json/dbfb/v1/orders/{id}/send-invoice` | Invia al cliente l'email con il link di pagamento di un ordine creato da una risposta (2.24.0+) |
 | `GET` | `/wp-json/dbfb/v1/updates` | Id dell'ultima risposta e risposte nuove per form, per il polling (2.22.0+) |
 | `POST` / `DELETE` | `/wp-json/dbfb/v1/push/subscription` | Registra o rimuove la sottoscrizione push del dispositivo: `{"endpoint": "…", "keys": {"p256dh": "…", "auth": "…"}}` (2.22.0+) |
 | `POST` | `/wp-json/dbfb/v1/push/test` | Notifica di prova ai dispositivi dell'utente (2.22.0+) |
@@ -277,6 +291,8 @@ curl -u "utente:xxxx xxxx xxxx xxxx xxxx xxxx" \
 | `dbfb_rest_rate_limit` | `120` | Richieste massime per utente alle API REST `dbfb/v1` nella finestra (2.20.0+, `0` = disattivato) |
 | `dbfb_rest_rate_window` | `60` | Durata in secondi della finestra del limite precedente (2.20.0+) |
 | `dbfb_orders_capability` | `'edit_shop_orders'` | Capability per vedere gli ordini WooCommerce nella web app (2.23.0+) |
+| `dbfb_create_order_capability` | `'edit_shop_orders'` | Capability per creare ordini dalle risposte (2.24.0+) |
+| `dbfb_order_billing_from_submission` | dati ricavati | Corregge la fatturazione proposta; riceve anche la risposta (2.24.0+) |
 | `dbfb_rest_me` | dati di `GET /me` | Estende la risposta di `GET /me` (2.23.0+, usato dal modulo WooCommerce) |
 | `dbfb_push_allowed_hosts` | FCM, Mozilla, Apple, Windows | Host dei push service a cui il sito invia notifiche (2.22.0+) |
 | `dbfb_push_vapid_subject` | URL del sito (HTTPS) o `mailto:` dell'amministratore | Contatto VAPID comunicato ai push service (2.22.0+) |
@@ -285,6 +301,7 @@ curl -u "utente:xxxx xxxx xxxx xxxx xxxx xxxx" \
 Action:
 - `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
 - `dbfb_consent_revoked($consent_id, $consent_key, $submission_id)` — un consenso facoltativo è stato revocato, dal link email o da admin (2.16.0+). Per sincronizzare CRM e newsletter.
+- `dbfb_order_created_from_submission($order, $submission_id)` — un ordine WooCommerce è stato creato da una risposta (2.24.0+).
 - `dbfb_submission_saved($submission_id, $form_id, $form_data)` — una risposta è stata salvata, dopo email e webhook (2.19.0+). Per notifiche e integrazioni. `$form_data` contiene dati personali: non va scritto nei log.
 
 ## Installazione
@@ -528,6 +545,15 @@ Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. 
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.24.0 — Ordine WooCommerce da una risposta
+
+Migrazione dello schema v7 → v8 (nuova tabella `wp_dbfb_links`), automatica.
+
+- **"Crea ordine" nella web app:** fatturazione ricavata dalla risposta e modificabile, riga personalizzata con importo libero (IVA secondo le impostazioni del negozio), ordine "in attesa di pagamento", link di pagamento da copiare o inviato al cliente con l'email WooCommerce "Dettagli ordine".
+- **Collegamento risposta ↔ ordine** nei due sensi (`_dbfb_submission_id` e `wp_dbfb_links`); l'ordine compare come "Creato da questa risposta" tra gli ordini del cliente.
+- **Privacy:** il collegamento si cancella con la risposta in tutti i percorsi (eliminazione singola, multipla, del form, retention, eraser GDPR), e con l'ordine se questo viene eliminato definitivamente; ordini collegati nell'export GDPR; nuova voce "Collegamento risposte ai form e ordini WooCommerce" nel registro dei trattamenti.
+- **API:** `GET /submissions/{id}/order-draft`, `POST /submissions/{id}/orders`, `POST /orders/{id}/send-invoice`.
 
 ### 2.23.0 — WooCommerce: risposte e ordini del cliente
 
@@ -950,6 +976,7 @@ db-form-builder/
 │   ├── class-submit.php             # Submit, honeypot, GDPR, reCAPTCHA gating, file upload, webhook
 │   ├── class-submissions.php        # Risposte, CSV export, download protetto allegati
 │   ├── class-submissions-repository.php # Accesso unico alla tabella risposte: query, stato, cancellazione, subject_hash (2.19.0+)
+│   ├── class-links.php              # Collegamenti risposta → oggetti esterni, es. ordini (2.24.0+)
 │   ├── class-roles.php              # Capability dbfb_view_submissions e ruolo "Gestore form" (2.20.0+)
 │   ├── class-rest.php               # API REST dbfb/v1 (2.20.0+)
 │   ├── class-app.php                # Web app: rotte /dbfb-app/, shell, manifest, service worker (2.21.0+)
@@ -957,7 +984,8 @@ db-form-builder/
 │   ├── class-notifications.php      # Notifiche: push, ntfy, Telegram, polling /updates (2.22.0+)
 │   ├── openssl.cnf                  # Configurazione OpenSSL minima per i server che ne sono privi (2.22.0+)
 │   ├── woo/
-│   │   └── class-woo.php            # WooCommerce: ordini del cliente, ordini del negozio (2.23.0+, solo con Woo attivo)
+│   │   ├── class-woo.php            # WooCommerce: ordini del cliente, ordini del negozio (2.23.0+, solo con Woo attivo)
+│   │   └── class-woo-order-builder.php # Ordine da una risposta: bozza, creazione, link di pagamento (2.24.0+)
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)

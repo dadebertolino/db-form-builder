@@ -197,7 +197,9 @@ class DBFB_Woo {
         uasort($orders, function ($a, $b) {
             $da = $a->get_date_created();
             $db = $b->get_date_created();
-            return ($db ? $db->getTimestamp() : 0) - ($da ? $da->getTimestamp() : 0);
+            $diff = ($db ? $db->getTimestamp() : 0) - ($da ? $da->getTimestamp() : 0);
+            // Stesso secondo: decide l'id, così l'ordine è stabile.
+            return $diff !== 0 ? $diff : $b->get_id() - $a->get_id();
         });
         return array_slice(array_values($orders), 0, self::MAX_CUSTOMER_ORDERS);
     }
@@ -239,6 +241,24 @@ class DBFB_Woo {
             'items'        => (int) $order->get_item_count(),
             'edit_url'     => $order->get_edit_order_url(),
             'needs_payment' => $order->needs_payment(),
+        );
+    }
+
+    /**
+     * Voce per il registro dei trattamenti (DB Privacy Hub).
+     *
+     * @return array
+     */
+    public static function privacy_entry() {
+        return array(
+            'id'             => 'dbfb_woocommerce',
+            'label'          => __('Collegamento risposte ai form e ordini WooCommerce (DB Form Builder)', 'db-form-builder'),
+            'status'         => 'active',
+            'purpose'        => __('Mostrare al personale autorizzato gli ordini del cliente che ha inviato una risposta e, su richiesta, preparare un ordine (per esempio da un preventivo) con il relativo link di pagamento.', 'db-form-builder'),
+            'legal_basis'    => __('Esecuzione di misure precontrattuali e del contratto richiesti dall\'interessato (art. 6.1.b GDPR).', 'db-form-builder'),
+            'data_collected' => __('L\'email indicata nella risposta viene confrontata con l\'email di fatturazione degli ordini e con gli account dei clienti, senza essere copiata. Per gli ordini creati da una risposta: dati di fatturazione ricavati dalla risposta e verificati dal personale, collegamento tra risposta e ordine.', 'db-form-builder'),
+            'retention'      => __('Il collegamento si cancella con la risposta (eliminazione, conservazione automatica, richiesta di cancellazione). L\'ordine segue le regole di conservazione di WooCommerce e gli obblighi fiscali.', 'db-form-builder'),
+            'transfers'      => __('Nessuno: i dati restano nel database del sito. L\'email con il link di pagamento è inviata da WooCommerce con il sistema email del sito.', 'db-form-builder'),
         );
     }
 

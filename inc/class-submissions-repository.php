@@ -167,6 +167,8 @@ class DBFB_Submissions_Repository {
 
         DB_Form_Builder::delete_submission_deliveries($ids);
         DBFB_Consents::delete_for_submissions($ids);
+        // 2.24.0: collegamenti agli ordini (l'ordine resta, con le sue regole).
+        DBFB_Links::delete_for_submissions($ids);
 
         global $wpdb;
         $table = self::table();
@@ -202,6 +204,8 @@ class DBFB_Submissions_Repository {
             }
         } while (count($rows) === $batch);
 
+        // 2.24.0: collegamenti, prima delle righe a cui si riferiscono.
+        DBFB_Links::delete_for_form($form_id);
         $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE form_id = %d", $form_id));
 
         // 2.16.0: anche i consensi facoltativi del form, compresi quelli

@@ -301,6 +301,8 @@ class DB_Form_Builder {
                 // 2.16.0: i consensi facoltativi dati e non revocati restano
                 // fino alla revoca, il resto segue la risposta.
                 DBFB_Consents::on_submissions_expired(array((int) $row->id));
+                // 2.24.0: collegamenti agli ordini (l'ordine resta).
+                DBFB_Links::delete_for_submissions(array((int) $row->id));
                 ++$rows_processed;
                 // Cancella subito la riga DB così la query successiva non
                 // ripesca le stesse righe (la WHERE submitted_at non
@@ -407,6 +409,9 @@ class DB_Form_Builder {
         // Tabella consensi facoltativi (2.16.0+).
         DBFB_Consents::create_table();
 
+        // Tabella dei collegamenti risposta → oggetti esterni (2.24.0+).
+        DBFB_Links::create_table();
+
         // Marca lo schema come aggiornato all'ultima versione solo per una
         // tabella appena creata (vedi nota sopra).
         if ($created_fresh) {
@@ -422,7 +427,7 @@ class DB_Form_Builder {
      * admin_init e in attivazione, quindi anche installazioni in
      * mu-plugins o WP-CLI bulk hanno lo schema corretto.
      */
-    const SCHEMA_VERSION = 7;
+    const SCHEMA_VERSION = 8;
 
     /**
      * Aggiorna lo schema esistente da versioni precedenti.
@@ -435,6 +440,7 @@ class DB_Form_Builder {
      *  - v5 → v6 (2.16.0): tabella wp_dbfb_consents (consensi facoltativi)
      *  - v6 → v7 (2.19.0): colonne status e subject_hash, indici form_status
      *    e subject_hash, backfill di subject_hash via cron
+     *  - v7 → v8 (2.24.0): tabella wp_dbfb_links (risposta → ordine WooCommerce)
      *
      * Le submission esistenti mantengono il loro ip_address in chiaro
      * (backward compat). Per le nuove submission, il salvataggio popolerà
@@ -544,6 +550,11 @@ class DB_Form_Builder {
             }
             DBFB_Submissions_Repository::columns(true);
             DBFB_Submissions_Repository::maybe_schedule_backfill();
+        }
+
+        // v7 → v8 (Form Builder 2.24.0): collegamenti risposta → ordine.
+        if ($current < 8) {
+            DBFB_Links::create_table();
         }
 
         update_option('dbfb_schema_version', self::SCHEMA_VERSION);
