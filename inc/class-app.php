@@ -326,6 +326,18 @@ class DBFB_App {
             'pushUnsupported' => __('Questo browser non supporta le notifiche push.', 'db-form-builder'),
             'pushIos'        => __('Su iPhone e iPad le notifiche funzionano solo con l\'app aggiunta alla schermata Home: tocca Condividi → "Aggiungi alla schermata Home" e apri l\'app da lì.', 'db-form-builder'),
             'pushError'      => __('Non è stato possibile attivare le notifiche. Riprova.', 'db-form-builder'),
+            // 2.23.0: WooCommerce.
+            'storeOrders'    => __('Ordini del negozio', 'db-form-builder'),
+            'customerOrders' => __('Ordini di questo cliente', 'db-form-builder'),
+            'noOrders'       => __('Nessun ordine.', 'db-form-builder'),
+            'noCustomerOrders' => __('Nessun ordine con questa email.', 'db-form-builder'),
+            'noEmail'        => __('La risposta non contiene un indirizzo email: non si può collegare a un cliente.', 'db-form-builder'),
+            /* translators: 1: nome del cliente, 2: numero di ordini */
+            'registered'     => __('Cliente registrato: %1$s (%2$s ordini)', 'db-form-builder'),
+            /* translators: %s: numero dell'ordine */
+            'orderNumber'    => __('Ordine #%s', 'db-form-builder'),
+            'openInWoo'      => __('Apri in WooCommerce (nuova finestra)', 'db-form-builder'),
+            'linkedOrder'    => __('Creato da questa risposta', 'db-form-builder'),
         );
     }
 

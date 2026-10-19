@@ -255,13 +255,15 @@ class DBFB_REST {
      */
     public static function get_me() {
         $user = wp_get_current_user();
-        return rest_ensure_response(array(
+        // 2.23.0: filter per i moduli opzionali (WooCommerce).
+        return rest_ensure_response(apply_filters('dbfb_rest_me', array(
             'name'       => html_entity_decode((string) $user->display_name, ENT_QUOTES, 'UTF-8'),
             // wp_logout_url() è già escapato per l'HTML (&amp;): nel JSON serve l'URL vero.
             'logout_url' => wp_specialchars_decode(class_exists('DBFB_App') ? wp_logout_url(DBFB_App::url()) : wp_logout_url(), ENT_QUOTES),
             // 2.22.0: notifiche push e intervallo di polling.
             'notifications' => class_exists('DBFB_Notifications') ? DBFB_Notifications::client_info() : null,
-        ));
+            'woo'           => null,
+        )));
     }
 
     /**

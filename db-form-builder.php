@@ -3,7 +3,7 @@
  * Plugin Name: DB Form Builder
  * Plugin URI: https://www.davidebertolino.it
  * Description: Form builder con drag & drop, logica condizionale, reCAPTCHA gated dal consenso, email personalizzabili, export CSV con header esplicativi. Privacy by design: IP hashato, retention con pulizia allegati, snapshot fields, integrazione DSAR WordPress + DB Privacy Hub, informativa privacy per singolo form, monitoraggio conformità consenso GDPR. Webhook async con retry + HMAC signing.
- * Version: 2.22.0
+ * Version: 2.23.0
  * Author: Davide Bertolino
  * Author URI: https://www.davidebertolino.it
  * Text Domain: db-form-builder
@@ -14,7 +14,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DBFB_VERSION', '2.22.0');
+define('DBFB_VERSION', '2.23.0');
 define('DBFB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('DBFB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBFB_PLUGIN_FILE', __FILE__);
@@ -92,6 +92,19 @@ require_once DBFB_PLUGIN_DIR . 'inc/class-privacy-dsar.php';
 require_once DBFB_PLUGIN_DIR . 'inc/class-gdpr-compliance-notice.php';
 // Webhook delivery system (2.7.0): retry async, HMAC signing, dead-letter.
 require_once DBFB_PLUGIN_DIR . 'inc/class-webhook.php';
+
+// WooCommerce (2.23.0): compatibilità con l'archiviazione ordini ad alte
+// prestazioni (HPOS) e modulo caricato solo con WooCommerce attivo.
+add_action('before_woocommerce_init', function () {
+    if (class_exists('\Automattic\WooCommerce\Utilities\FeaturesUtil')) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', DBFB_PLUGIN_FILE, true);
+    }
+});
+add_action('plugins_loaded', function () {
+    if (!class_exists('WooCommerce')) return;
+    require_once DBFB_PLUGIN_DIR . 'inc/woo/class-woo.php';
+    DBFB_Woo::init();
+});
 
 // Init
 DB_Form_Builder::get_instance();

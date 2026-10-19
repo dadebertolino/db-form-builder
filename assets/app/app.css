@@ -456,6 +456,29 @@ h2 {
     min-height: 44px;
 }
 
+.orders-section {
+    margin-top: 24px;
+}
+
+.chip.order-processing,
+.chip.order-completed {
+    color: var(--success);
+    border-color: var(--success);
+}
+
+.chip.order-pending,
+.chip.order-on-hold {
+    color: var(--banner-text);
+    border-color: var(--banner-text);
+}
+
+.chip.order-cancelled,
+.chip.order-failed,
+.chip.order-refunded {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
 .push-card {
     margin-top: 16px;
     padding: 4px 16px 8px;

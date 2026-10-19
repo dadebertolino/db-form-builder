@@ -359,19 +359,18 @@ class DBFB_Submissions_Repository {
     // =========================================================
 
     /**
-     * Hash dell'email dell'interessato di una risposta.
+     * Email dell'interessato di una risposta (2.23.0, prima interna a subject_hash_for()).
      *
      * L'interessato è il primo campo di tipo email (snapshot della risposta,
      * poi campi correnti del form, più quelli aggiunti dal filter
-     * dbfb_dsar_email_field_ids) con un indirizzo valido. Stesso HMAC di
-     * DBFB_Consents::subject_hash(), così le due tabelle si possono incrociare.
+     * dbfb_dsar_email_field_ids) con un indirizzo valido.
      *
      * @param array $data        Dati della risposta (con _fields_snapshot se presente).
      * @param array $form_fields Campi correnti del form.
      * @param int   $form_id
-     * @return string Hash esadecimale, '' se la risposta non contiene un'email.
+     * @return string Email in minuscolo, '' se la risposta non ne contiene.
      */
-    public static function subject_hash_for($data, $form_fields, $form_id) {
+    public static function subject_email_for($data, $form_fields, $form_id) {
         if (!is_array($data)) return '';
 
         $ids = array();
@@ -391,10 +390,35 @@ class DBFB_Submissions_Repository {
         foreach ($ids as $field_id) {
             $value = $data[$field_id] ?? '';
             if (is_string($value) && is_email(trim($value))) {
-                return DBFB_Consents::subject_hash($value);
+                return strtolower(trim($value));
             }
         }
         return '';
+    }
+
+    /**
+     * Email dell'interessato di una riga della tabella (2.23.0).
+     *
+     * @param object $row Riga con form_id e data.
+     * @return string
+     */
+    public static function subject_email($row) {
+        $fields = get_post_meta((int) $row->form_id, '_dbfb_fields', true);
+        return self::subject_email_for(json_decode((string) $row->data, true), is_array($fields) ? $fields : array(), (int) $row->form_id);
+    }
+
+    /**
+     * Hash dell'email dell'interessato di una risposta. Stesso HMAC di
+     * DBFB_Consents::subject_hash(), così le due tabelle si possono incrociare.
+     *
+     * @param array $data        Dati della risposta (con _fields_snapshot se presente).
+     * @param array $form_fields Campi correnti del form.
+     * @param int   $form_id
+     * @return string Hash esadecimale, '' se la risposta non contiene un'email.
+     */
+    public static function subject_hash_for($data, $form_fields, $form_id) {
+        $email = self::subject_email_for($data, $form_fields, $form_id);
+        return $email !== '' ? DBFB_Consents::subject_hash($email) : '';
     }
 
     /**

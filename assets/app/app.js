@@ -12,6 +12,8 @@
  *
  * 2.22.0: polling di GET /updates mentre l'app è in primo piano, badge
  * sull'icona (Badging API), notifiche push attivabili per dispositivo.
+ * 2.23.0: con WooCommerce, #/o (ordini del negozio) e ordini del cliente
+ * nel dettaglio di una risposta.
  */
 (function () {
     'use strict';
@@ -36,6 +38,9 @@
     var quiet = false;
     // Dati di GET /me (notifiche, intervallo di polling).
     var me = null;
+    var meResolve;
+    // Si risolve con i dati di /me (o null se la chiamata fallisce).
+    var meReady = new Promise(function (resolve) { meResolve = resolve; });
     var latestId = 0;
     var pollTimer = null;
     // Titoli dei form, per l'intestazione delle liste filtrate.
@@ -69,8 +74,14 @@
         return el;
     }
 
-    function sprintf(str, n) {
-        return String(str).replace('%d', String(n));
+    // %d / %s sequenziali, oppure %1$s, %2$s posizionali.
+    function sprintf(str) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        var i = 0;
+        return String(str).replace(/%(?:(\d+)\$)?[sd]/g, function (m, pos) {
+            var v = pos ? args[parseInt(pos, 10) - 1] : args[i++];
+            return v === undefined ? '' : String(v);
+        });
     }
 
     function announce(msg) {
@@ -226,11 +237,17 @@
                 )
             );
             var pushCard = h('section', { 'class': 'card push-card', id: 'push-card', 'aria-labelledby': 'push-title', hidden: true });
+            var ordersEntry = (me && me.woo && me.woo.orders) ? h('ul', { 'class': 'list spaced' },
+                h('li', null, h('a', { href: '#/o' },
+                    h('span', { 'class': 'main' }, h('span', { 'class': 'title', text: S.storeOrders }))
+                ))
+            ) : null;
             setView({}, [
                 h('h1', { tabindex: '-1', text: S.allForms }),
                 h('p', { 'class': 'subtitle', text: C.siteName }),
                 forms.length ? all : null,
-                forms.length ? h('ul', { 'class': 'list' }, items) : h('div', { 'class': 'state' }, h('p', { text: S.noForms })),
+                forms.length ? h('ul', { 'class': 'list spaced' }, items) : h('div', { 'class': 'state' }, h('p', { text: S.noForms })),
+                ordersEntry,
                 pushCard
             ]);
             updatePushCard(pushCard);
@@ -404,11 +421,93 @@
                 hasFiles ? h('p', { 'class': 'note', text: S.linkExpires }) : null
             ]);
 
+            // 2.23.0: ordini dello stesso cliente (solo con WooCommerce e permessi sugli ordini).
+            meReady.then(function (info) {
+                if (token !== renderToken || !info || !info.woo || !info.woo.orders) return;
+                main.appendChild(customerOrdersSection(s, token));
+            });
+
             // Aperta = letta (come nell'admin). Le archiviate restano archiviate.
             if (s.status === 'new') {
                 setStatus('read').catch(function () { /* resta "nuova": si riprova alla prossima apertura */ });
             }
         });
+    }
+
+    // ---- WooCommerce (2.23.0) ----
+    function orderItem(o) {
+        var meta = formatDate(o.date) + ' · ' + o.total + (o.customer ? ' · ' + o.customer : '');
+        return h('li', null,
+            h('a', { href: o.edit_url, target: '_blank', rel: 'noopener', 'aria-label': sprintf(S.orderNumber, o.number) + ' — ' + S.openInWoo },
+                h('span', { 'class': 'main' },
+                    h('span', { 'class': 'title', text: sprintf(S.orderNumber, o.number) + (o.linked ? ' · ' + S.linkedOrder : '') }),
+                    h('span', { 'class': 'meta', text: meta })
+                ),
+                h('span', { 'class': 'chip order-' + o.status, text: o.status_label })
+            )
+        );
+    }
+
+    function viewOrders(token) {
+        var page = 1;
+        var list = h('ul', { 'class': 'list' });
+        var more = h('div', { 'class': 'more' });
+        function load() {
+            return api('orders', { params: { page: page, per_page: C.perPage } }).then(function (res) {
+                if (token !== renderToken) return null;
+                (res.data || []).forEach(function (o) { list.appendChild(orderItem(o)); });
+                var pages = parseInt(res.headers.get('X-WP-TotalPages') || '1', 10);
+                more.textContent = '';
+                if (page < pages) {
+                    more.appendChild(h('button', {
+                        type: 'button', 'class': 'btn', text: S.loadMore,
+                        onclick: function (e) {
+                            e.currentTarget.disabled = true;
+                            page++;
+                            var first = list.children.length;
+                            load().then(function () {
+                                var a = list.children[first] && list.children[first].querySelector('a');
+                                if (a) a.focus();
+                            }).catch(function (err) { errorView(err); });
+                        }
+                    }));
+                }
+                return res.data || [];
+            });
+        }
+        return load().then(function (rows) {
+            if (rows === null) return;
+            setView({ back: '#/', barTitle: S.storeOrders, docTitle: S.storeOrders }, [
+                h('h1', { tabindex: '-1', text: S.storeOrders }),
+                rows.length ? list : h('div', { 'class': 'state' }, h('p', { text: S.noOrders })),
+                more
+            ]);
+        });
+    }
+
+    function customerOrdersSection(s, token) {
+        var section = h('section', { 'class': 'orders-section', 'aria-labelledby': 'orders-title', 'aria-busy': 'true' },
+            h('h2', { id: 'orders-title', text: S.customerOrders }),
+            h('p', { 'class': 'muted', text: S.loading })
+        );
+        api('submissions/' + s.id + '/orders').then(function (res) {
+            if (token !== renderToken) return;
+            var d = res.data;
+            section.removeChild(section.lastChild);
+            if (!d.has_email) {
+                section.appendChild(h('p', { 'class': 'muted', text: S.noEmail }));
+            } else {
+                if (d.customer) section.appendChild(h('p', { 'class': 'muted', text: sprintf(S.registered, d.customer.name, d.customer.orders_count) }));
+                section.appendChild(d.orders.length
+                    ? h('ul', { 'class': 'list' }, d.orders.map(orderItem))
+                    : h('p', { 'class': 'muted', text: S.noCustomerOrders }));
+            }
+            section.setAttribute('aria-busy', 'false');
+        }).catch(function () {
+            section.lastChild.textContent = S.error;
+            section.setAttribute('aria-busy', 'false');
+        });
+        return section;
     }
 
     // =========================================================
@@ -435,6 +534,8 @@
             var status = route.params.get('status') || '';
             if (['', 'new', 'read', 'archived'].indexOf(status) === -1) status = '';
             run = function () { return viewSubmissions(token, parseInt(seg[1], 10), status); };
+        } else if (seg[0] === 'o') {
+            run = function () { return viewOrders(token); };
         } else if (seg[0] === 's' && /^\d+$/.test(seg[1] || '')) {
             run = function () { return viewSubmission(token, parseInt(seg[1], 10)); };
         } else {
@@ -646,9 +747,12 @@
                 logoutLink.href = me.logout_url;
                 logoutLink.hidden = false;
             }
+            meResolve(me);
             updatePushCard(document.getElementById('push-card'));
+            // La home dipende da /me per la voce degli ordini: si aggiorna senza spostare il focus.
+            if (me.woo && me.woo.orders && parseHash().seg.length === 0) render(true);
             startPolling();
-        }).catch(function () { /* gestito dalla vista; si riprova al ritorno online */ });
+        }).catch(function () { meResolve(null); /* gestito dalla vista; si riprova al ritorno online */ });
     }
     loadMe();
 

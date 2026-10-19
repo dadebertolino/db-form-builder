@@ -211,6 +211,15 @@ Un'app installabile (PWA) per consultare le risposte da smartphone o PC, all'ind
 
 **Permalink:** con la struttura "Semplice" l'app funziona su `?dbfb_app=shell`, ma non si installa né parte offline (il service worker non viene registrato).
 
+## WooCommerce (2.23.0+)
+
+Con WooCommerce attivo la web app collega le risposte ai clienti del negozio. Il modulo (`inc/woo/`) si carica solo se WooCommerce è attivo ed è compatibile con l'archiviazione ordini ad alte prestazioni (HPOS) e con quella classica.
+
+- **Cliente di una risposta:** l'email della risposta (il primo campo email valido, come per le richieste GDPR) confrontata con l'email di fatturazione degli ordini e con l'account del cliente registrato.
+- **Nel dettaglio di una risposta:** "Ordini di questo cliente", con numero, data, totale e stato; ogni ordine si apre in WooCommerce.
+- **"Ordini del negozio"** in home: gli ultimi ordini, con "Carica altre".
+- **Permessi:** oltre all'accesso alle risposte serve la capability degli ordini di WooCommerce (`edit_shop_orders`, che hanno amministratore e Shop manager). Il ruolo "Gestore form" non vede gli ordini; per darglieli: `add_filter('dbfb_orders_capability', fn() => 'dbfb_view_submissions');` oppure aggiungi `edit_shop_orders` al ruolo.
+
 ## API REST (2.20.0+)
 
 Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
@@ -223,6 +232,8 @@ Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
 | `PATCH` | `/wp-json/dbfb/v1/submissions/{id}` | Cambio di stato: `{"status": "read"}` |
 | `GET` | `/wp-json/dbfb/v1/stats` | Risposte per giorno e per form. Parametri: `days` (1–365, default 30), `form_id` |
 | `GET` | `/wp-json/dbfb/v1/me` | Nome dell'utente e link di logout, per la web app (2.21.0+); dalla 2.22.0 anche la chiave VAPID e l'intervallo di aggiornamento |
+| `GET` | `/wp-json/dbfb/v1/orders` | Ultimi ordini WooCommerce, paginati (2.23.0+, serve `edit_shop_orders`) |
+| `GET` | `/wp-json/dbfb/v1/submissions/{id}/orders` | Ordini dello stesso cliente della risposta (2.23.0+, serve `edit_shop_orders`) |
 | `GET` | `/wp-json/dbfb/v1/updates` | Id dell'ultima risposta e risposte nuove per form, per il polling (2.22.0+) |
 | `POST` / `DELETE` | `/wp-json/dbfb/v1/push/subscription` | Registra o rimuove la sottoscrizione push del dispositivo: `{"endpoint": "…", "keys": {"p256dh": "…", "auth": "…"}}` (2.22.0+) |
 | `POST` | `/wp-json/dbfb/v1/push/test` | Notifica di prova ai dispositivi dell'utente (2.22.0+) |
@@ -265,6 +276,8 @@ curl -u "utente:xxxx xxxx xxxx xxxx xxxx xxxx" \
 | `dbfb_revoke_rate_window` | `600` | Durata in secondi della finestra del limite precedente (2.16.0+) |
 | `dbfb_rest_rate_limit` | `120` | Richieste massime per utente alle API REST `dbfb/v1` nella finestra (2.20.0+, `0` = disattivato) |
 | `dbfb_rest_rate_window` | `60` | Durata in secondi della finestra del limite precedente (2.20.0+) |
+| `dbfb_orders_capability` | `'edit_shop_orders'` | Capability per vedere gli ordini WooCommerce nella web app (2.23.0+) |
+| `dbfb_rest_me` | dati di `GET /me` | Estende la risposta di `GET /me` (2.23.0+, usato dal modulo WooCommerce) |
 | `dbfb_push_allowed_hosts` | FCM, Mozilla, Apple, Windows | Host dei push service a cui il sito invia notifiche (2.22.0+) |
 | `dbfb_push_vapid_subject` | URL del sito (HTTPS) o `mailto:` dell'amministratore | Contatto VAPID comunicato ai push service (2.22.0+) |
 | `dbfb_notification_message` | titolo, testo, link, tag | Messaggio delle notifiche; riceve anche `$form_id` (2.22.0+). Non inserire dati delle risposte |
@@ -515,6 +528,15 @@ Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. 
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
 
 ## Changelog
+
+### 2.23.0 — WooCommerce: risposte e ordini del cliente
+
+Nessuna migrazione dello schema. Il modulo si attiva solo con WooCommerce.
+
+- **Ordini del cliente nel dettaglio di una risposta**, trovati per email di fatturazione e per account registrato; **"Ordini del negozio"** nella web app.
+- **Compatibilità HPOS dichiarata** (`FeaturesUtil::declare_compatibility`); solo `wc_get_orders()`, testato con archiviazione HPOS e classica.
+- **API:** `GET /orders` e `GET /submissions/{id}/orders`, con la capability `edit_shop_orders` (filter `dbfb_orders_capability`).
+- **Repository:** `subject_email()` restituisce l'email dell'interessato con la stessa regola di `subject_hash`.
 
 ### 2.22.0 — Aggiornamenti in tempo reale e notifiche
 
@@ -934,6 +956,8 @@ db-form-builder/
 │   ├── class-web-push.php           # Web Push senza librerie: VAPID, cifratura RFC 8291 (2.22.0+)
 │   ├── class-notifications.php      # Notifiche: push, ntfy, Telegram, polling /updates (2.22.0+)
 │   ├── openssl.cnf                  # Configurazione OpenSSL minima per i server che ne sono privi (2.22.0+)
+│   ├── woo/
+│   │   └── class-woo.php            # WooCommerce: ordini del cliente, ordini del negozio (2.23.0+, solo con Woo attivo)
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)
