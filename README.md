@@ -189,7 +189,7 @@ Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)
 
 Un'app installabile (PWA) per consultare le risposte da smartphone o PC, all'indirizzo `https://example.com/dbfb-app/`. Il link è anche in Form Builder → Web app.
 
-- **Accesso:** login di WordPress. Possono entrare gli amministratori e gli utenti con il ruolo **Gestore form**, che dopo il login arrivano direttamente all'app.
+- **Accesso:** login di WordPress. Possono entrare gli amministratori e gli utenti con il ruolo **Gestore form**, che dopo il login arrivano direttamente all'app. Dalla 2.24.0 il Gestore form non entra nel resto dell'amministrazione (viene riportato all'app) e non vede la barra di amministrazione sul sito; resta accessibile solo il suo profilo, per cambiare la password.
 - **Viste:** elenco dei form con il numero di risposte nuove, risposte di un form con filtro per stato (nuove, lette, archiviate) e "Carica altre", dettaglio con campi, allegati, consenso e provenienza. Una risposta aperta diventa "letta"; dal dettaglio si può archiviare, ripristinare o rimettere tra le nuove.
 - **Installazione:** Android (Chrome) → menu ⋮ → "Installa app"; iPhone e iPad (Safari) → Condividi → "Aggiungi alla schermata Home"; Chrome ed Edge su PC → icona nella barra degli indirizzi.
 - **Tema chiaro e scuro** (automatico o scelto dall'icona nella barra), accessibilità WCAG 2.1 AA: navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci per gli screen reader, pulsanti da 44 px.
@@ -265,7 +265,7 @@ curl -u "utente:xxxx xxxx xxxx xxxx xxxx xxxx" \
 - allegati solo tramite link firmati che scadono dopo 15 minuti;
 - rate limit per utente: 120 richieste al minuto, regolabile con i filter `dbfb_rest_rate_limit` e `dbfb_rest_rate_window`. Oltre il limite si riceve `429`.
 
-**Nota:** alcuni plugin di sicurezza bloccano `/wp-json/` o disattivano le Application Passwords. Se le chiamate rispondono `401` o `404` con le credenziali giuste, controlla le loro impostazioni.
+**Nota:** alcuni plugin di sicurezza bloccano `/wp-json/` o disattivano le Application Passwords. Se le chiamate rispondono `401` o `404` con le credenziali giuste, controlla le loro impostazioni. Dalla 2.24.0 la pagina Form Builder → Web app lo verifica da sola (richiesta di prova alle API, ripetibile) e mostra un avviso se le API sono bloccate o le Application Passwords non sono disponibili.
 
 `submitted_at` è nel formato `Y-m-d H:i:s` con l'orologio del database, lo stesso mostrato nell'admin.
 
@@ -554,6 +554,8 @@ Migrazione dello schema v7 → v8 (nuova tabella `wp_dbfb_links`), automatica.
 - **Collegamento risposta ↔ ordine** nei due sensi (`_dbfb_submission_id` e `wp_dbfb_links`); l'ordine compare come "Creato da questa risposta" tra gli ordini del cliente.
 - **Privacy:** il collegamento si cancella con la risposta in tutti i percorsi (eliminazione singola, multipla, del form, retention, eraser GDPR), e con l'ordine se questo viene eliminato definitivamente; ordini collegati nell'export GDPR; nuova voce "Collegamento risposte ai form e ordini WooCommerce" nel registro dei trattamenti.
 - **API:** `GET /submissions/{id}/order-draft`, `POST /submissions/{id}/orders`, `POST /orders/{id}/send-invoice`.
+- **Gestore form solo nell'app:** le pagine dell'amministrazione (tranne il profilo) riportano all'app, niente barra di amministrazione sul sito.
+- **Controllo delle API** nella pagina Web app: avviso se un plugin di sicurezza blocca `/wp-json/` o se le Application Passwords non sono disponibili.
 
 ### 2.23.0 — WooCommerce: risposte e ordini del cliente
 

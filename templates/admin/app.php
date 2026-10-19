@@ -7,6 +7,7 @@
  * @var string $role_name
  * @var array  $notify          Impostazioni delle notifiche (2.22.0).
  * @var bool   $push_supported  Il server può inviare Web Push (2.22.0).
+ * @var array  $health          Esito del controllo delle API (2.24.0).
  */
 if (!defined('ABSPATH')) exit;
 ?>
@@ -21,6 +22,34 @@ if (!defined('ABSPATH')) exit;
     <div class="db-ui-card" style="padding:16px 20px;max-width:760px">
         <p><?php esc_html_e('Le risposte ai form, da smartphone o PC, in un\'app installabile. Indirizzo:', 'db-form-builder'); ?></p>
         <p><code style="user-select:all"><?php echo esc_html($app_url); ?></code></p>
+
+        <?php // 2.24.0: API REST bloccate o Application Passwords disattivate. ?>
+        <?php if ($health['rest_ok'] === false): ?>
+            <div class="notice notice-error inline"><p>
+                <strong><?php esc_html_e('Le API del sito non rispondono come previsto:', 'db-form-builder'); ?></strong>
+                <?php
+                printf(
+                    /* translators: %s: codice della risposta, es. HTTP 403 */
+                    esc_html__('la web app non potrà caricare le risposte (%s). Spesso dipende da un plugin di sicurezza che blocca /wp-json/: consenti il percorso /wp-json/dbfb/v1/ agli utenti collegati.', 'db-form-builder'),
+                    esc_html($health['rest_detail'])
+                );
+                ?>
+            </p></div>
+        <?php elseif ($health['rest_ok'] === null): ?>
+            <div class="notice notice-warning inline"><p>
+                <?php
+                printf(
+                    /* translators: %s: messaggio di errore */
+                    esc_html__('Non è stato possibile verificare le API del sito dal server (%s). Se la web app non carica i dati, controlla che /wp-json/ non sia bloccato.', 'db-form-builder'),
+                    esc_html($health['rest_detail'])
+                );
+                ?>
+            </p></div>
+        <?php endif; ?>
+        <?php if (!$health['app_passwords']): ?>
+            <div class="notice notice-info inline"><p><?php esc_html_e('Le Application Passwords non sono disponibili (sito senza HTTPS o disattivate da un plugin): la web app funziona lo stesso, ma i client esterni non possono usare le API.', 'db-form-builder'); ?></p></div>
+        <?php endif; ?>
+        <p><a href="<?php echo esc_url(wp_nonce_url(add_query_arg('dbfb_recheck', '1', admin_url('admin.php?page=dbfb-app')), 'dbfb_recheck')); ?>"><?php esc_html_e('Ripeti il controllo delle API', 'db-form-builder'); ?></a></p>
 
         <?php if (!$pretty): ?>
             <div class="notice notice-warning inline"><p>

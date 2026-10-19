@@ -105,6 +105,7 @@ delete_option('dbfb_roles_version');
 // 2.21.0: le regole di rewrite di /dbfb-app/ spariscono al prossimo flush;
 // togliendo il marcatore, una reinstallazione le registra di nuovo.
 delete_option('dbfb_app_rewrite_version');
+delete_transient('dbfb_app_health');
 
 // 2.22.0: notifiche. Chiavi VAPID, impostazioni (con i token ntfy/Telegram),
 // sottoscrizioni push di tutti gli utenti, invii in coda.

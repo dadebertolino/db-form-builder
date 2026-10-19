@@ -36,6 +36,11 @@ class DBFB_App {
         add_action('template_redirect', array(__CLASS__, 'maybe_serve'), 0);
         add_filter('login_redirect', array(__CLASS__, 'login_redirect'), 10, 3);
         add_action('admin_menu', array(__CLASS__, 'admin_menu'), 20);
+        // 2.24.0: il "Gestore form" usa solo l'app e il proprio profilo.
+        add_action('admin_init', array(__CLASS__, 'keep_managers_in_app'), 1);
+        // Pagine non accessibili: WordPress le blocca (403) prima di admin_init.
+        add_action('admin_page_access_denied', array(__CLASS__, 'keep_managers_in_app'));
+        add_filter('show_admin_bar', array(__CLASS__, 'hide_admin_bar_for_managers'));
     }
 
     // =========================================================
@@ -403,6 +408,28 @@ class DBFB_App {
         return self::url();
     }
 
+    /**
+     * Utenti con solo l'accesso alle risposte (nessun edit_posts): niente
+     * bacheca né altre pagine dell'admin, tranne il profilo (password,
+     * Application Passwords). admin-ajax e admin-post restano raggiungibili:
+     * li usano l'app (nonce REST) e i download degli allegati.
+     */
+    public static function keep_managers_in_app() {
+        if (wp_doing_ajax() || wp_doing_cron() || !self::is_app_only_user()) return;
+        global $pagenow;
+        if (in_array($pagenow, array('admin-post.php', 'profile.php', 'authorize-application.php'), true)) return;
+        wp_safe_redirect(self::url());
+        exit;
+    }
+
+    public static function hide_admin_bar_for_managers($show) {
+        return self::is_app_only_user() ? false : $show;
+    }
+
+    private static function is_app_only_user() {
+        return is_user_logged_in() && DBFB_Roles::current_user_can_view() && !current_user_can('edit_posts');
+    }
+
     public static function admin_menu() {
         add_submenu_page(
             'dbfb-forms',
@@ -412,6 +439,44 @@ class DBFB_App {
             'dbfb-app',
             array(__CLASS__, 'render_admin_page')
         );
+    }
+
+    /**
+     * Controllo delle API usate dall'app (2.24.0).
+     *
+     * Alcuni plugin di sicurezza bloccano /wp-json/ ai non loggati o del
+     * tutto, o disattivano le Application Passwords. Una richiesta anonima a
+     * GET /dbfb/v1/forms deve rispondere 401 con il codice del plugin: un
+     * 403/404 o una pagina HTML indicano un blocco. Esito in cache per un'ora.
+     *
+     * @param bool $force Ignora la cache.
+     * @return array {rest_ok: bool, rest_detail: string, app_passwords: bool}
+     */
+    public static function health_check($force = false) {
+        $cached = get_transient('dbfb_app_health');
+        if (!$force && is_array($cached)) return $cached;
+
+        $response = wp_remote_get(rest_url(DBFB_REST::NAMESPACE_V1 . '/forms'), array(
+            'timeout'   => 8,
+            'sslverify' => (bool) apply_filters('https_local_ssl_verify', false),
+            'headers'   => array('Accept' => 'application/json'),
+        ));
+        if (is_wp_error($response)) {
+            $ok     = null;
+            $detail = $response->get_error_message();
+        } else {
+            $code   = (int) wp_remote_retrieve_response_code($response);
+            $body   = json_decode((string) wp_remote_retrieve_body($response), true);
+            $ok     = ($code === 401 && is_array($body) && ($body['code'] ?? '') === 'rest_not_logged_in');
+            $detail = 'HTTP ' . $code . (is_array($body) && isset($body['code']) ? ' (' . sanitize_key($body['code']) . ')' : '');
+        }
+        $result = array(
+            'rest_ok'       => $ok,
+            'rest_detail'   => $detail,
+            'app_passwords' => function_exists('wp_is_application_passwords_available') && wp_is_application_passwords_available(),
+        );
+        set_transient('dbfb_app_health', $result, HOUR_IN_SECONDS);
+        return $result;
     }
 
     public static function render_admin_page() {
@@ -424,6 +489,8 @@ class DBFB_App {
         // 2.22.0: notifiche.
         $notify         = DBFB_Notifications::settings();
         $push_supported = DBFB_Web_Push::is_supported();
+        // 2.24.0: API REST raggiungibili e Application Passwords.
+        $health = self::health_check(isset($_GET['dbfb_recheck']) && check_admin_referer('dbfb_recheck')); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- nonce verificato da check_admin_referer().
         include DBFB_PLUGIN_DIR . 'templates/admin/app.php';
     }
 }
