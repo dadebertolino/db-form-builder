@@ -12,7 +12,12 @@
  *  SOFT (default, opt-in NON attivo):
  *    - Rimuove le option del plugin (settings, schema_version)
  *    - Disschedula i cron dbfb_cleanup_submissions, dbfb_cleanup_deliveries
- *      e i dispatch dbfb_webhook_dispatch in coda (2.13.0)
+ *      e i dispatch dbfb_webhook_dispatch in coda (2.13.0), il backfill
+ *      dbfb_backfill_subject_hash (2.19.0)
+ *    - Rimuove la capability dbfb_view_submissions e il ruolo "Gestore
+ *      form" (2.20.0)
+ *    - Rimuove impostazioni delle notifiche, chiavi VAPID e sottoscrizioni
+ *      push degli utenti (2.22.0)
  *    - Pulisce i transient dbfb_rate_*
  *    - LASCIA INTATTI: tabelle submissions e webhook deliveries, post type
  *      dbfb_form + relativi post meta, allegati in uploads/dbfb/
@@ -27,6 +32,7 @@
  *    - DROP TABLE wp_dbfb_submissions (cancella TUTTE le submission)
  *    - DROP TABLE wp_dbfb_webhook_deliveries (2.13.0)
  *    - DROP TABLE wp_dbfb_consents + option dbfb_consent_secret (2.16.0)
+ *    - DROP TABLE wp_dbfb_links (2.24.0; gli ordini WooCommerce restano)
  *    - wp_delete_post() force=true su tutti i post di tipo dbfb_form
  *      (cancella i form definiti + i loro post meta automaticamente)
  *    - Pulizia della cartella wp-content/uploads/dbfb/ (file di sicurezza
@@ -71,6 +77,8 @@ wp_clear_scheduled_hook('dbfb_cleanup_submissions');
 // wp_clear_scheduled_hook() senza argomenti non li troverebbe, quindi usiamo
 // wp_unschedule_hook() (WP 5.1+) che rimuove ogni evento dell'hook.
 wp_clear_scheduled_hook('dbfb_cleanup_deliveries');
+// 2.19.0: backfill di subject_hash sulle risposte pre-2.19.0.
+wp_clear_scheduled_hook('dbfb_backfill_subject_hash');
 if (function_exists('wp_unschedule_hook')) {
     wp_unschedule_hook('dbfb_webhook_dispatch');
 } else {
@@ -82,6 +90,33 @@ delete_option('dbfb_global_settings');
 delete_option('dbfb_schema_version');
 delete_option('dbfb_uploads_protection');
 delete_option('dbfb_file_link_secret');
+delete_option('dbfb_subject_backfill');
+
+// 2.20.0: capability dbfb_view_submissions e ruolo "Gestore form". Sono
+// configurazione del plugin, non dati: si rimuovono anche nella pulizia soft.
+foreach (wp_roles()->role_objects as $dbfb_role) {
+    if ($dbfb_role->has_cap('dbfb_view_submissions')) {
+        $dbfb_role->remove_cap('dbfb_view_submissions');
+    }
+}
+remove_role('dbfb_manager');
+delete_option('dbfb_roles_version');
+
+// 2.21.0: le regole di rewrite di /dbfb-app/ spariscono al prossimo flush;
+// togliendo il marcatore, una reinstallazione le registra di nuovo.
+delete_option('dbfb_app_rewrite_version');
+delete_transient('dbfb_app_health');
+
+// 2.22.0: notifiche. Chiavi VAPID, impostazioni (con i token ntfy/Telegram),
+// sottoscrizioni push di tutti gli utenti, invii in coda.
+delete_option('dbfb_notifications');
+delete_option('dbfb_vapid_keys');
+delete_metadata('user', 0, 'dbfb_push_subscriptions', '', true);
+if (function_exists('wp_unschedule_hook')) {
+    wp_unschedule_hook('dbfb_notify_dispatch');
+} else {
+    wp_clear_scheduled_hook('dbfb_notify_dispatch');
+}
 
 // 2.3 — Transient di rate limit. dbfb_rate_* sono creati con set_transient
 // a runtime, quindi vivono in wp_options come _transient_dbfb_rate_*.
@@ -151,6 +186,11 @@ if ($hard_delete) {
     $table_consents = $wpdb->prefix . 'dbfb_consents';
     $wpdb->query("DROP TABLE IF EXISTS `{$table_consents}`");
     delete_option('dbfb_consent_secret');
+
+    // 3.2d — DROP della tabella dei collegamenti risposta → ordine (2.24.0).
+    // Gli ordini WooCommerce restano: hanno le proprie regole di conservazione.
+    $table_links = $wpdb->prefix . 'dbfb_links';
+    $wpdb->query("DROP TABLE IF EXISTS `{$table_links}`");
 
     // 3.3 — Cancellazione di tutti i form definiti (CPT dbfb_form).
     // Usiamo wp_delete_post(force=true) per skippare il cestino e cancellare

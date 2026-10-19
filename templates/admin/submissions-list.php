@@ -30,10 +30,15 @@
                             <span class="dbfb-count <?php echo $counts[$form->ID] > 0 ? 'has-data' : ''; ?>">
                                 <?php echo intval($counts[$form->ID]); ?>
                             </span>
+                            <?php if (!empty($new_counts[$form->ID])): // 2.19.0 ?>
+                                <span class="dbfb-count is-new">
+                                    <?php echo esc_html(sprintf(_n('%d nuova', '%d nuove', $new_counts[$form->ID], 'db-form-builder'), $new_counts[$form->ID])); ?>
+                                </span>
+                            <?php endif; ?>
                         </td>
                         <td class="actions">
                             <?php if ($counts[$form->ID] > 0): ?>
-                                <a href="<?php echo admin_url('admin.php?page=dbfb-submissions&form_id=' . $form->ID); ?>">
+                                <a href="<?php echo esc_url(admin_url('admin.php?page=dbfb-submissions&form_id=' . $form->ID)); ?>">
                                     <?php _e('Visualizza', 'db-form-builder'); ?>
                                 </a>
                                 <a href="<?php echo wp_nonce_url(admin_url('admin-ajax.php?action=dbfb_export_csv&form_id=' . $form->ID), 'dbfb_nonce', 'nonce'); ?>">
@@ -63,5 +68,10 @@
 .dbfb-count.has-data {
     background: #d4edda;
     color: #155724;
+}
+.dbfb-count.is-new {
+    margin-left: 6px;
+    background: #dbeafe;
+    color: #1e3a8a;
 }
 </style>

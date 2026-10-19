@@ -7,7 +7,7 @@
             <a href="<?php echo admin_url('admin.php?page=dbfb-forms'); ?>" class="button">
                 &larr; <?php _e('Tutti i Form', 'db-form-builder'); ?>
             </a>
-            <?php if (!empty($submissions)): ?>
+            <?php if ($total_all > 0): ?>
                 <a href="<?php echo wp_nonce_url(admin_url('admin-ajax.php?action=dbfb_export_csv&form_id=' . $form_id), 'dbfb_nonce', 'nonce'); ?>" 
                    class="button button-primary">
                     <?php _e('Esporta CSV', 'db-form-builder'); ?>
@@ -24,22 +24,64 @@
             ?>
         </div>
     <?php endif; ?>
-    
-    <?php if (empty($submissions)): ?>
+    <?php if (isset($_GET['sub_status'])): // 2.19.0 ?>
+        <div class="dbfb-notice">
+            <?php
+            $count = intval($_GET['sub_status']);
+            printf(esc_html(_n('Stato aggiornato per %d risposta.', 'Stato aggiornato per %d risposte.', $count, 'db-form-builder')), $count);
+            ?>
+        </div>
+    <?php endif; ?>
+
+    <?php
+    // 2.19.0: etichette degli stati e base degli URL di filtro/paginazione.
+    $status_labels = [
+        'new'      => __('Nuova', 'db-form-builder'),
+        'read'     => __('Letta', 'db-form-builder'),
+        'archived' => __('Archiviata', 'db-form-builder'),
+    ];
+    $tab_labels = [
+        ''         => __('Tutte', 'db-form-builder'),
+        'new'      => __('Nuove', 'db-form-builder'),
+        'read'     => __('Lette', 'db-form-builder'),
+        'archived' => __('Archiviate', 'db-form-builder'),
+    ];
+    $view_base = remove_query_arg(['status', 'paged', 'sub_deleted', 'sub_status']);
+    ?>
+
+    <?php if ($total_all === 0): ?>
         <div class="dbfb-empty">
             <p><?php _e('Nessuna risposta ricevuta per questo form.', 'db-form-builder'); ?></p>
         </div>
     <?php else: ?>
         <p>
             <?php printf(
-                _n('%d risposta ricevuta', '%d risposte ricevute', count($submissions), 'db-form-builder'),
-                count($submissions)
+                _n('%d risposta ricevuta', '%d risposte ricevute', $total_all, 'db-form-builder'),
+                $total_all
             ); ?>
         </p>
-        
+
+        <nav class="dbfb-status-tabs" aria-label="<?php esc_attr_e('Filtra per stato', 'db-form-builder'); ?>">
+            <?php foreach ($tab_labels as $tab_status => $tab_label):
+                $tab_count = $tab_status === '' ? $total_all : ($status_counts[$tab_status] ?? 0);
+                $is_current = ($tab_status === $status);
+            ?>
+                <a href="<?php echo esc_url($tab_status === '' ? $view_base : add_query_arg('status', $tab_status, $view_base)); ?>"
+                   class="<?php echo $is_current ? 'current' : ''; ?>"<?php echo $is_current ? ' aria-current="page"' : ''; ?>>
+                    <?php echo esc_html($tab_label); ?> <span class="count">(<?php echo intval($tab_count); ?>)</span>
+                </a>
+            <?php endforeach; ?>
+        </nav>
+
+        <?php if (empty($submissions)): ?>
+        <div class="dbfb-empty">
+            <p><?php _e('Nessuna risposta con questo stato.', 'db-form-builder'); ?></p>
+        </div>
+        <?php else: ?>
         <form method="post" action="<?php echo admin_url('admin.php?page=dbfb-forms'); ?>" id="dbfb-submissions-form">
             <?php wp_nonce_field('dbfb_bulk_submissions'); ?>
             <input type="hidden" name="form_id" value="<?php echo $form_id; ?>">
+            <input type="hidden" name="status" value="<?php echo esc_attr($status); ?>">
             
             <div class="dbfb-bulk-actions" style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center; flex-wrap:wrap;">
                 <label>
@@ -50,6 +92,12 @@
                         onclick="return confirm('<?php echo esc_js(__('Eliminare le risposte selezionate? Azione irreversibile.', 'db-form-builder')); ?>');">
                     <?php _e('Elimina selezionate', 'db-form-builder'); ?>
                 </button>
+                <?php // 2.19.0: cambio di stato delle selezionate. ?>
+                <span class="dbfb-bulk-status" style="display:none; gap:10px;">
+                    <button type="submit" name="dbfb_bulk_action" value="mark_read" class="button"><?php _e('Segna come lette', 'db-form-builder'); ?></button>
+                    <button type="submit" name="dbfb_bulk_action" value="mark_new" class="button"><?php _e('Segna come nuove', 'db-form-builder'); ?></button>
+                    <button type="submit" name="dbfb_bulk_action" value="archive" class="button"><?php _e('Archivia', 'db-form-builder'); ?></button>
+                </span>
 
                 <?php // GDPR right of erasure (art. 17): cancellazione di massa per il form intero. ?>
                 <button type="submit" name="dbfb_bulk_action" value="delete_all" class="button"
@@ -58,14 +106,14 @@
                             echo esc_js(sprintf(
                                 /* translators: %d: numero submission del form */
                                 __('Stai per cancellare TUTTE le %d risposte di questo form. L\'operazione è irreversibile e cancella anche gli IP, gli allegati e tutti i dati associati. Continuare?', 'db-form-builder'),
-                                count($submissions)
+                                $total_all
                             ));
                         ?>');">
                     🗑️ <?php
                     printf(
                         /* translators: %d: numero submission del form */
-                        esc_html(_n('Cancella TUTTE (%d)', 'Cancella TUTTE (%d)', count($submissions), 'db-form-builder')),
-                        count($submissions)
+                        esc_html(_n('Cancella TUTTE (%d)', 'Cancella TUTTE (%d)', $total_all, 'db-form-builder')),
+                        $total_all
                     );
                     ?>
                 </button>
@@ -90,6 +138,7 @@
                         <th style="width:30px;"></th>
                         <th><?php _e('ID', 'db-form-builder'); ?></th>
                         <th><?php _e('Data', 'db-form-builder'); ?></th>
+                        <th><?php _e('Stato', 'db-form-builder'); ?></th>
                         <?php foreach ($columns as $col): ?>
                             <th><?php echo esc_html($col['label']); ?></th>
                         <?php endforeach; ?>
@@ -112,12 +161,14 @@
                             $row_labels_by_id[$rf['id']] = $rf['label'];
                         }
                     ?>
-                        <tr>
+                        <?php $row_status = isset($status_labels[$submission->status ?? '']) ? $submission->status : 'read'; ?>
+                        <tr class="dbfb-sub-row is-<?php echo esc_attr($row_status); ?>">
                             <td>
                                 <input type="checkbox" name="submission_ids[]" value="<?php echo $submission->id; ?>" class="dbfb-sub-checkbox">
                             </td>
                             <td><?php echo $submission->id; ?></td>
                             <td><?php echo date_i18n('d/m/Y H:i', strtotime($submission->submitted_at)); ?></td>
+                            <td><span class="dbfb-status dbfb-status-<?php echo esc_attr($row_status); ?>"><?php echo esc_html($status_labels[$row_status]); ?></span></td>
                             <?php foreach ($columns as $col):
                                 $field_id = $col['id'];
                                 // La riga ha realmente questo campo nel suo snapshot?
@@ -156,6 +207,7 @@
                             <td class="actions" style="white-space: nowrap;">
                                 <a href="#" class="dbfb-view-submission" 
                                    data-id="<?php echo $submission->id; ?>"
+                                   data-status="<?php echo esc_attr($row_status); ?>"
                                    data-date="<?php echo esc_attr(date_i18n('d/m/Y H:i:s', strtotime($submission->submitted_at))); ?>"
                                    data-ip="<?php echo esc_attr($ip_info['display']); ?>"
                                    data-ip-tooltip="<?php echo esc_attr($ip_info['tooltip']); ?>"
@@ -198,6 +250,20 @@
                 </tbody>
             </table>
         </form>
+        <?php endif; ?>
+
+        <?php if ($total_pages > 1): // 2.19.0 ?>
+            <nav class="dbfb-pagination" aria-label="<?php esc_attr_e('Pagine delle risposte', 'db-form-builder'); ?>">
+                <?php echo wp_kses_post(paginate_links([
+                    'base'      => add_query_arg('paged', '%#%', remove_query_arg(['sub_deleted', 'sub_status'])),
+                    'format'    => '',
+                    'current'   => $paged,
+                    'total'     => $total_pages,
+                    'prev_text' => '&laquo; ' . __('Precedenti', 'db-form-builder'),
+                    'next_text' => __('Successive', 'db-form-builder') . ' &raquo;',
+                ])); ?>
+            </nav>
+        <?php endif; ?>
     <?php endif; ?>
 </div>
 
@@ -225,6 +291,7 @@ jQuery(document).ready(function($) {
     function toggleBulkDelete() {
         var checked = $('.dbfb-sub-checkbox:checked').length;
         $('#dbfb-bulk-delete').toggle(checked > 0);
+        $('.dbfb-bulk-status').css('display', checked > 0 ? 'inline-flex' : 'none');
         if (checked > 0) {
             $('#dbfb-bulk-delete').text('<?php echo esc_js(__('Elimina selezionate', 'db-form-builder')); ?> (' + checked + ')');
         }
@@ -354,6 +421,21 @@ jQuery(document).ready(function($) {
         
         // Focus the close button (WCAG 2.4.3)
         setTimeout(function() { $('#dbfb-modal-close').trigger('focus'); }, 250);
+
+        // 2.19.0: aprire una risposta nuova la segna come letta.
+        if ($link.attr('data-status') === 'new') {
+            $.post(dbfb.ajax_url, {
+                action: 'dbfb_mark_submission_read',
+                nonce: dbfb.nonce,
+                submission_id: $link.data('id')
+            }).done(function(res) {
+                if (!res || !res.success) return;
+                $link.attr('data-status', 'read');
+                $link.closest('tr').removeClass('is-new').addClass('is-read')
+                    .find('.dbfb-status').removeClass('dbfb-status-new').addClass('dbfb-status-read')
+                    .text('<?php echo esc_js(__('Letta', 'db-form-builder')); ?>');
+            });
+        }
     });
     
     function closeModal() {

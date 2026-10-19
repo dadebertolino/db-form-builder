@@ -193,6 +193,17 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                     );
                 }
 
+                // 2.24.0: ordini WooCommerce creati da questa risposta.
+                $linked_orders = class_exists('DBFB_Links') ? DBFB_Links::objects_for_submission((int) $row->id, 'wc_order') : array();
+                if ($linked_orders) {
+                    $items[] = array(
+                        'name'  => __('Ordini collegati', 'db-form-builder'),
+                        'value' => implode(', ', array_map(function ($id) {
+                            return '#' . (int) $id;
+                        }, $linked_orders)),
+                    );
+                }
+
                 // L'IP viene incluso solo se è disponibile (rispetta storage mode).
                 // 2.13.0: etichetta coerente con format_submission_ip(): "hash"
                 // solo se il valore è davvero l'hash, altrimenti IP in chiaro
@@ -302,8 +313,6 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
             $email_address = strtolower(trim((string) $email_address));
             $page = max(1, (int) $page);
 
-            global $wpdb;
-            $table = $wpdb->prefix . 'dbfb_submissions';
             $items_removed = 0;
             $files_removed = 0;
             $messages = array();
@@ -331,17 +340,11 @@ if (!class_exists('DBFB_Privacy_DSAR')) {
                 $matches = self::find_submissions_by_email($email_address, 1, $after_id);
                 $after_id = $matches['last_id'];
 
-                foreach ($matches['rows'] as $row) {
-                    // Cancella i file allegati prima del DELETE DB
-                    // (riusa l'helper 2.4.0+ con validazione path-traversal).
-                    $files_removed += DB_Form_Builder::delete_submission_files($row);
-                    DB_Form_Builder::delete_submission_deliveries(array((int) $row->id));
-                    // 2.16.0: consensi facoltativi della submission.
-                    DBFB_Consents::delete_for_submissions(array((int) $row->id));
-
-                    $deleted = $wpdb->delete($table, array('id' => $row->id), array('%d'));
-                    if ($deleted) $items_removed++;
-                }
+                // Righe, allegati, deliveries e consensi facoltativi delle
+                // submission trovate (2.19.0: repository).
+                $deleted = DBFB_Submissions_Repository::delete_rows($matches['rows']);
+                $items_removed += $deleted['rows'];
+                $files_removed += $deleted['files'];
             } while (!$matches['done'] && ++$batches < self::ERASER_MAX_BATCHES);
 
             // 2.16.0: consensi rimasti senza risposta (dopo la retention),

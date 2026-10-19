@@ -223,7 +223,6 @@ class DBFB_Submit {
 
         // Save submission
         global $wpdb;
-        $table = $wpdb->prefix . 'dbfb_submissions';
         DB_Form_Builder::maybe_create_table();
         DB_Form_Builder::maybe_upgrade_schema();
 
@@ -270,11 +269,16 @@ class DBFB_Submit {
             }
         }
 
-        $result = $wpdb->insert($table, [
+        // 2.19.0: INSERT dal repository, che restituisce subito l'id (prima
+        // che wp_mail e i plugin SMTP sovrascrivano $wpdb->insert_id) e
+        // scarta le colonne che una migrazione fallita non ha creato.
+        $submission_id = DBFB_Submissions_Repository::insert([
             'form_id' => $form_id,
             'data' => wp_json_encode($form_data),
+            'status' => 'new',
             'ip_address' => $ip_address_value,
             'ip_hash' => $ip_hash_value,
+            'subject_hash' => DBFB_Submissions_Repository::subject_hash_for($form_data, $form_fields, $form_id),
             'gdpr_consent_given'          => $gdpr_consent_given,
             'gdpr_consent_text'           => $gdpr_consent_text,
             'gdpr_consent_timestamp'      => $gdpr_consent_timestamp,
@@ -282,12 +286,7 @@ class DBFB_Submit {
             'gdpr_consent_policy_version' => $gdpr_consent_policy_version,
         ]);
 
-        // 2.11.2: leggiamo l'id subito dopo l'INSERT. Più avanti wp_mail può
-        // far girare plugin SMTP che scrivono log su DB e sovrascrivono
-        // $wpdb->insert_id, collegando la delivery alla submission sbagliata.
-        $submission_id = ($result === false) ? 0 : (int) $wpdb->insert_id;
-
-        if ($result === false) {
+        if (!$submission_id) {
             // Loghiamo solo in debug per evitare di sporcare i log di
             // produzione. Il chiamante riceve comunque il success message,
             // ma chi sviluppa vede l'errore.
@@ -353,6 +352,12 @@ class DBFB_Submit {
                 $form_settings['webhook_url'],
                 $payload
             );
+        }
+
+        // 2.19.0: risposta salvata (dopo email e webhook). Per notifiche e
+        // integrazioni: $form_data contiene dati personali, non va loggato.
+        if ($submission_id) {
+            do_action('dbfb_submission_saved', $submission_id, $form_id, $form_data);
         }
 
         $response = [

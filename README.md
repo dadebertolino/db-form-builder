@@ -1,6 +1,6 @@
 # DB Form Builder
 
-Plugin WordPress per la creazione di form con drag & drop, logica condizionale, upload file, multi-step e webhook.
+Plugin WordPress per la creazione di form con drag & drop, logica condizionale, upload file, multi-step e webhook. Dalla 2.21.0 le risposte si consultano anche da smartphone o PC con una web app installabile, con notifiche e, se c'è WooCommerce, collegamento agli ordini.
 
 **Autore:** Davide Bertolino  
 **Sito:** [https://www.davidebertolino.it](https://www.davidebertolino.it)  
@@ -33,7 +33,12 @@ Plugin WordPress per la creazione di form con drag & drop, logica condizionale, 
 - **Email personalizzabili** — Conferma utente + notifica admin (più destinatari) con placeholder dinamici, inseribili con un clic dall'editor (2.12.0+)
 - **Documenti nella conferma (2.14.0+)** — Uno o più file della Media Library (regolamento, brochure, modulo) inviati come link nell'email di conferma con il segnaposto `{documenti}`
 - **Colori personalizzabili (2.12.0+)** — Sfondo, pulsanti e testo del form, globali o per singolo form, con contrasto WCAG AA garantito sui pulsanti e avviso sul testo
-- **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, allegati scaricabili solo dall'admin (2.13.0+)
+- **Gestione risposte** — Dettaglio modale, elimina singole/bulk/tutte, export CSV, allegati scaricabili solo dall'admin (2.13.0+), stato nuova/letta/archiviata con filtri e paginazione (2.19.0+)
+- **Web app delle risposte (2.21.0+)** — Su `/dbfb-app/`, installabile su Android, iPhone e PC: elenco dei form con risposte nuove, filtri per stato, dettaglio con allegati, tema chiaro/scuro. In cache sul dispositivo solo l'interfaccia, mai le risposte
+- **Aggiornamenti in tempo reale e notifiche (2.22.0+)** — Conteggi aggiornati con l'app aperta, badge sull'icona, notifiche push senza librerie esterne, in alternativa ntfy o Telegram; mai dati delle risposte nei messaggi
+- **Ruolo "Gestore form" (2.20.0+)** — Per chi segue le risposte senza accedere al resto dell'amministrazione
+- **API REST `dbfb/v1` (2.20.0+)** — Form, risposte, stato e statistiche, con cookie o Application Passwords
+- **WooCommerce (2.23.0+)** — Ordini del cliente accanto alla risposta e ordine "in attesa di pagamento" creato da un preventivo, con link di pagamento (2.24.0+). Compatibile HPOS
 - **Aggiornamenti automatici** — da GitHub Releases, direttamente in Plugin → Aggiornamenti (2.13.0+)
 - **Duplica form** — Copia campi e impostazioni con un click
 - **Esporta / importa form (2.18.0+)** — Un form come file `.json`, per passarlo da un sito di test alla produzione
@@ -127,6 +132,9 @@ Il Form Builder fa parte dell'ecosistema privacy dei plugin DB (**DB Privacy Hub
 | Consenso dell'utente | Sì | Checkbox GDPR per form, prova del consenso art. 7.1 |
 | DSAR | Sì | Exporter + eraser (art. 15 e 17), marker `DBFB_DSAR_AVAILABLE` |
 | Privacy Hub | Sì | `dbph_processing_register`, `dbph_user_data_exporters/erasers`, `dbph_consents_register` |
+| Web app (2.21.0+) | Sì | Solo utenti con `dbfb_view_submissions`; service worker con cache della sola interfaccia, shell senza dati personali |
+| Notifiche (2.22.0+) | Opzionale | Sottoscrizioni push del personale nello user meta; messaggi senza dati delle risposte; voce "Notifiche al personale" nel registro dei trattamenti |
+| WooCommerce (2.23.0+) | Opzionale | Collegamenti risposta → ordine in `wp_dbfb_links`, cancellati con la risposta; ordini collegati nell'export DSAR; voce nel registro dei trattamenti |
 
 ### Consent gate per reCAPTCHA (lato client dalla 2.13.0)
 
@@ -185,6 +193,90 @@ Le richieste DSAR includono i consensi facoltativi: l'export li riporta in un gr
 
 Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)`). Letta dal Privacy Hub per decidere se inserire la menzione "procedura DSAR semplificata via Strumenti → Esporta/Cancella dati personali" nella sezione "Diritti dell'interessato" della Privacy Policy generata.
 
+## Web app delle risposte (2.21.0+)
+
+Un'app installabile (PWA) per consultare le risposte da smartphone o PC, all'indirizzo `https://example.com/dbfb-app/`. Il link è anche in Form Builder → Web app.
+
+- **Accesso:** login di WordPress. Possono entrare gli amministratori e gli utenti con il ruolo **Gestore form**, che dopo il login arrivano direttamente all'app. Dalla 2.24.0 il Gestore form non entra nel resto dell'amministrazione (viene riportato all'app) e non vede la barra di amministrazione sul sito; resta accessibile solo il suo profilo, per cambiare la password.
+- **Viste:** elenco dei form con il numero di risposte nuove, risposte di un form con filtro per stato (nuove, lette, archiviate) e "Carica altre", dettaglio con campi, allegati, consenso e provenienza. Una risposta aperta diventa "letta"; dal dettaglio si può archiviare, ripristinare o rimettere tra le nuove.
+- **Installazione:** Android (Chrome) → menu ⋮ → "Installa app"; iPhone e iPad (Safari) → Condividi → "Aggiungi alla schermata Home"; Chrome ed Edge su PC → icona nella barra degli indirizzi.
+- **Tema chiaro e scuro** (automatico o scelto dall'icona nella barra), accessibilità WCAG 2.1 AA: navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci per gli screen reader, pulsanti da 44 px.
+- **Nessuna build:** JavaScript e CSS senza dipendenze, in `assets/app/`.
+
+**Privacy:** il service worker tiene in cache solo l'interfaccia (HTML, CSS, JavaScript, icone). La shell HTML non contiene dati personali né nonce: utente, form e risposte arrivano dalle API a ogni apertura e non vengono salvati sul dispositivo. Sul dispositivo resta solo la scelta del tema (localStorage). La shell non carica `wp_head()`, quindi nessuno script del tema o di altri plugin, e ha una Content Security Policy che consente script, stili e connessioni solo verso il sito.
+
+### Aggiornamenti e notifiche (2.22.0+)
+
+- **Aggiornamento automatico:** con l'app aperta e in primo piano, ogni 15 secondi (regolabile da 10 a 300) l'app chiede al sito solo l'id dell'ultima risposta e il numero di nuove (`GET /updates`). Nell'elenco dei form i conteggi si aggiornano da soli; in una lista compare il pulsante "Mostra le nuove risposte", così il contenuto non si sposta mentre lo leggi. In background il controllo si ferma.
+- **Badge sull'icona** dell'app installata con il numero di risposte nuove, dove il sistema lo supporta (Badging API).
+- **Notifiche push:** ogni utente le attiva dalla scheda "Notifiche" della web app, sul singolo dispositivo, e da lì può inviarsi una prova. Su iPhone e iPad servono iOS 16.4 o successivo e l'app aggiunta alla schermata Home. Uscendo dall'app la sottoscrizione del dispositivo viene revocata. Il Web Push è implementato nel plugin senza librerie esterne (VAPID + cifratura RFC 8291 con OpenSSL di PHP): niente Composer e niente estensioni gmp o bcmath.
+- **ntfy e Telegram** come alternativa (Form Builder → Web app → Notifiche): utili dove il push non arriva, per esempio iOS senza app installata. Pulsante "Invia una notifica di prova".
+- **Contenuto minimo:** "Nuova risposta", il titolo del form (disattivabile) e il link all'app. Mai i dati della risposta. Il payload push è cifrato per il singolo dispositivo; i push service ammessi sono solo quelli dei browser (Google, Mozilla, Apple, Microsoft; filter `dbfb_push_allowed_hosts`).
+- L'invio parte da un evento cron avviato subito dopo il salvataggio, così chi compila il form non aspetta.
+- I canali attivi sono dichiarati nel registro dei trattamenti del DB Privacy Hub (voce "Notifiche al personale sulle nuove risposte").
+
+**Cache di pagina:** `/dbfb-app/` invia header `no-store` e definisce `DONOTCACHEPAGE` (WP Rocket, W3 Total Cache, WP Super Cache, LiteSpeed Cache). Con una CDN o una cache del server configurata a parte, escludi il percorso `/dbfb-app/`.
+
+**Permalink:** con la struttura "Semplice" l'app funziona su `?dbfb_app=shell`, ma non si installa né parte offline (il service worker non viene registrato).
+
+## WooCommerce (2.23.0+)
+
+Con WooCommerce attivo la web app collega le risposte ai clienti del negozio. Il modulo (`inc/woo/`) si carica solo se WooCommerce è attivo ed è compatibile con l'archiviazione ordini ad alte prestazioni (HPOS) e con quella classica.
+
+- **Cliente di una risposta:** l'email della risposta (il primo campo email valido, come per le richieste GDPR) confrontata con l'email di fatturazione degli ordini e con l'account del cliente registrato.
+- **Nel dettaglio di una risposta:** "Ordini di questo cliente", con numero, data, totale e stato; ogni ordine si apre in WooCommerce.
+- **"Ordini del negozio"** in home: gli ultimi ordini, con "Carica altre".
+- **Permessi:** oltre all'accesso alle risposte serve la capability degli ordini di WooCommerce (`edit_shop_orders`, che hanno amministratore e Shop manager). Il ruolo "Gestore form" non vede gli ordini; per darglieli: `add_filter('dbfb_orders_capability', fn() => 'dbfb_view_submissions');` oppure aggiungi `edit_shop_orders` al ruolo.
+
+### Ordine da una risposta (2.24.0+)
+
+Pensato per i preventivi: dal dettaglio di una risposta, **"Crea ordine"**.
+
+1. Il modulo arriva precompilato con i dati di fatturazione ricavati dalla risposta: email dell'interessato, telefono (campo "Telefono" o etichetta telefono/cellulare), nome e cognome (anche da un unico campo "Nome e cognome"), azienda/ragione sociale, indirizzo, città/comune, CAP, provincia (convertita in sigla) e paese del negozio. Si controllano e correggono prima di creare.
+2. Una **riga personalizzata** (di default "Preventivo #ID — titolo del form") con l'**importo** inserito a mano: IVA inclusa o esclusa secondo l'impostazione del negozio, con le aliquote standard della sede. Accetta "1.250,50" e "1250.50".
+3. L'ordine nasce **"In attesa di pagamento"**, collegato al cliente registrato se l'email corrisponde, con una nota che indica la risposta di origine e chi l'ha creato. Totale e righe restano modificabili in WooCommerce.
+4. **Link di pagamento:** l'app lo mostra con il pulsante "Copia" e, se richiesto, WooCommerce invia al cliente l'email "Dettagli ordine" con il link. Se l'email non parte, l'app lo dice e si può riprovare.
+
+Collegamento nei due sensi: meta dell'ordine `_dbfb_submission_id` e tabella `wp_dbfb_links`. Il collegamento si cancella con la risposta (eliminazione, retention, richiesta GDPR); l'ordine resta, con le regole di conservazione di WooCommerce. Gli ordini collegati compaiono nell'export GDPR della risposta. Serve `edit_shop_orders` (filter `dbfb_create_order_capability`).
+
+## API REST (2.20.0+)
+
+Namespace `dbfb/v1`, per la web app delle risposte e per client esterni.
+
+| Metodo | Rotta | Uso |
+|---|---|---|
+| `GET` | `/wp-json/dbfb/v1/forms` | Form con totale e numero di risposte nuove |
+| `GET` | `/wp-json/dbfb/v1/submissions` | Risposte, più recenti prima. Parametri: `form_id`, `status` (`new`, `read`, `archived`), `since_id`, `page`, `per_page` (max 100). Totali negli header `X-WP-Total` e `X-WP-TotalPages`. Ogni voce ha solo un'anteprima, non i dati completi |
+| `GET` | `/wp-json/dbfb/v1/submissions/{id}` | Dettaglio: campi (con l'etichetta salvata al momento dell'invio), allegati, prova del consenso, consensi facoltativi, provenienza |
+| `PATCH` | `/wp-json/dbfb/v1/submissions/{id}` | Cambio di stato: `{"status": "read"}` |
+| `GET` | `/wp-json/dbfb/v1/stats` | Risposte per giorno e per form. Parametri: `days` (1–365, default 30), `form_id` |
+| `GET` | `/wp-json/dbfb/v1/me` | Nome dell'utente e link di logout, per la web app (2.21.0+); dalla 2.22.0 anche la chiave VAPID e l'intervallo di aggiornamento |
+| `GET` | `/wp-json/dbfb/v1/orders` | Ultimi ordini WooCommerce, paginati (2.23.0+, serve `edit_shop_orders`) |
+| `GET` | `/wp-json/dbfb/v1/submissions/{id}/orders` | Ordini dello stesso cliente della risposta (2.23.0+, serve `edit_shop_orders`) |
+| `GET` | `/wp-json/dbfb/v1/submissions/{id}/order-draft` | Dati di fatturazione ricavati dalla risposta e descrizione proposta (2.24.0+) |
+| `POST` | `/wp-json/dbfb/v1/submissions/{id}/orders` | Crea l'ordine: `{"billing": {…}, "description": "…", "amount": "1.220,00", "note": "…", "send_invoice": true}` (2.24.0+) |
+| `POST` | `/wp-json/dbfb/v1/orders/{id}/send-invoice` | Invia al cliente l'email con il link di pagamento di un ordine creato da una risposta (2.24.0+) |
+| `GET` | `/wp-json/dbfb/v1/updates` | Id dell'ultima risposta e risposte nuove per form, per il polling (2.22.0+) |
+| `POST` / `DELETE` | `/wp-json/dbfb/v1/push/subscription` | Registra o rimuove la sottoscrizione push del dispositivo: `{"endpoint": "…", "keys": {"p256dh": "…", "auth": "…"}}` (2.22.0+) |
+| `POST` | `/wp-json/dbfb/v1/push/test` | Notifica di prova ai dispositivi dell'utente (2.22.0+) |
+
+**Accesso:** serve la capability `dbfb_view_submissions`, che hanno l'amministratore e il nuovo ruolo **Gestore form**. Il ruolo non ha altri permessi: può consultare le risposte e cambiarne lo stato, ma non vede form, impostazioni, contenuti o utenti. Autenticazione standard di WordPress: cookie + nonce `wp_rest` dalle pagine del sito, [Application Passwords](https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/) per i client esterni (Utenti → Profilo → Password applicazione).
+
+```bash
+curl -u "utente:xxxx xxxx xxxx xxxx xxxx xxxx" \
+  "https://example.com/wp-json/dbfb/v1/submissions?status=new&per_page=10"
+```
+
+**Privacy e sicurezza:**
+- header `Cache-Control: no-store` su tutte le risposte del namespace;
+- niente IP nel dettaglio;
+- allegati solo tramite link firmati che scadono dopo 15 minuti;
+- rate limit per utente: 120 richieste al minuto, regolabile con i filter `dbfb_rest_rate_limit` e `dbfb_rest_rate_window`. Oltre il limite si riceve `429`.
+
+**Nota:** alcuni plugin di sicurezza bloccano `/wp-json/` o disattivano le Application Passwords. Se le chiamate rispondono `401` o `404` con le credenziali giuste, controlla le loro impostazioni. Dalla 2.24.0 la pagina Form Builder → Web app lo verifica da sola (richiesta di prova alle API, ripetibile) e mostra un avviso se le API sono bloccate o le Application Passwords non sono disponibili.
+
+`submitted_at` è nel formato `Y-m-d H:i:s` con l'orologio del database, lo stesso mostrato nell'admin.
+
 ## Filter pubblici
 
 | Filter | Default | Uso |
@@ -204,10 +296,21 @@ Costante definita in `db-form-builder.php` (`define('DBFB_DSAR_AVAILABLE', true)
 | `dbfb_attribution_consent_category` | `'marketing'` | Categoria di consenso richiesta per le chiavi non `utm_*` (2.17.0+) |
 | `dbfb_revoke_rate_limit` | `20` | Richieste massime per IP alla pagina di revoca dei consensi nella finestra (2.16.0+, `0` = disattivato) |
 | `dbfb_revoke_rate_window` | `600` | Durata in secondi della finestra del limite precedente (2.16.0+) |
+| `dbfb_rest_rate_limit` | `120` | Richieste massime per utente alle API REST `dbfb/v1` nella finestra (2.20.0+, `0` = disattivato) |
+| `dbfb_rest_rate_window` | `60` | Durata in secondi della finestra del limite precedente (2.20.0+) |
+| `dbfb_orders_capability` | `'edit_shop_orders'` | Capability per vedere gli ordini WooCommerce nella web app (2.23.0+) |
+| `dbfb_create_order_capability` | `'edit_shop_orders'` | Capability per creare ordini dalle risposte (2.24.0+) |
+| `dbfb_order_billing_from_submission` | dati ricavati | Corregge la fatturazione proposta; riceve anche la risposta (2.24.0+) |
+| `dbfb_rest_me` | dati di `GET /me` | Estende la risposta di `GET /me` (2.23.0+, usato dal modulo WooCommerce) |
+| `dbfb_push_allowed_hosts` | FCM, Mozilla, Apple, Windows | Host dei push service a cui il sito invia notifiche (2.22.0+) |
+| `dbfb_push_vapid_subject` | URL del sito (HTTPS) o `mailto:` dell'amministratore | Contatto VAPID comunicato ai push service (2.22.0+) |
+| `dbfb_notification_message` | titolo, testo, link, tag | Messaggio delle notifiche; riceve anche `$form_id` (2.22.0+). Non inserire dati delle risposte |
 
 Action:
 - `dbfb_cleanup_submissions_done($deleted, $days)` — emessa dopo ogni esecuzione del cron retention.
 - `dbfb_consent_revoked($consent_id, $consent_key, $submission_id)` — un consenso facoltativo è stato revocato, dal link email o da admin (2.16.0+). Per sincronizzare CRM e newsletter.
+- `dbfb_order_created_from_submission($order, $submission_id)` — un ordine WooCommerce è stato creato da una risposta (2.24.0+).
+- `dbfb_submission_saved($submission_id, $form_id, $form_data)` — una risposta è stata salvata, dopo email e webhook (2.19.0+). Per notifiche e integrazioni. `$form_data` contiene dati personali: non va scritto nei log.
 
 ## Installazione
 
@@ -431,8 +534,13 @@ Cosa succede durante l'import:
 
 L'avviso dopo l'import elenca tutto ciò che è stato cambiato o va ricontrollato.
 
+### Web app
+Form Builder > Web app: indirizzo dell'app, istruzioni di installazione, notifiche e controllo delle API. Per dare l'accesso a un collaboratore senza aprirgli l'amministrazione, crea un utente con il ruolo **Gestore form**. Dettagli nella sezione "Web app delle risposte".
+
 ### Risposte
-Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
+Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV.
+
+Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. Le risposte arrivano come nuove e diventano lette all'apertura del dettaglio; con le azioni di massa si possono segnare come lette, rimettere tra le nuove o archiviare. I tab in cima alla tabella filtrano per stato, la tabella mostra 50 risposte per pagina e l'elenco dei form indica quante risposte nuove ha ciascuno. Lo stato serve solo all'organizzazione: la retention cancella anche le risposte archiviate.
 
 ## Accessibilità (WCAG 2.1 AA)
 
@@ -446,8 +554,71 @@ Form Builder > Risposte — dettaglio modale, elimina singola/bulk, export CSV
 - Contrasto ≥ 4.5:1 su tutti i testi e componenti
 - `prefers-reduced-motion` e `forced-colors` supportati
 - Screen reader text per "(obbligatorio)" e "(si apre in una nuova finestra)"
+- Web app (2.21.0+): navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci `aria-live` per aggiornamenti e cambi di stato, errori dei moduli associati ai campi (`aria-invalid` + `aria-describedby`), tema chiaro/scuro con contrasti AA
 
 ## Changelog
+
+### 2.24.0 — Ordine WooCommerce da una risposta
+
+Migrazione dello schema v7 → v8 (nuova tabella `wp_dbfb_links`), automatica.
+
+- **"Crea ordine" nella web app:** fatturazione ricavata dalla risposta e modificabile, riga personalizzata con importo libero (IVA secondo le impostazioni del negozio), ordine "in attesa di pagamento", link di pagamento da copiare o inviato al cliente con l'email WooCommerce "Dettagli ordine".
+- **Collegamento risposta ↔ ordine** nei due sensi (`_dbfb_submission_id` e `wp_dbfb_links`); l'ordine compare come "Creato da questa risposta" tra gli ordini del cliente.
+- **Privacy:** il collegamento si cancella con la risposta in tutti i percorsi (eliminazione singola, multipla, del form, retention, eraser GDPR), e con l'ordine se questo viene eliminato definitivamente; ordini collegati nell'export GDPR; nuova voce "Collegamento risposte ai form e ordini WooCommerce" nel registro dei trattamenti.
+- **API:** `GET /submissions/{id}/order-draft`, `POST /submissions/{id}/orders`, `POST /orders/{id}/send-invoice`.
+- **Gestore form solo nell'app:** le pagine dell'amministrazione (tranne il profilo) riportano all'app, niente barra di amministrazione sul sito.
+- **Controllo delle API** nella pagina Web app: avviso se un plugin di sicurezza blocca `/wp-json/` o se le Application Passwords non sono disponibili.
+- **Importi ambigui rifiutati:** "1.250" o "1,250" si interpretano con i separatori del negozio; se il separatore è quello decimale seguito da tre cifre l'importo viene rifiutato, invece di diventare 1,25 nel link di pagamento.
+- **Correzioni dalla revisione del codice:** rate limit delle API a finestra fissa (prima, con l'app aperta, il polling impediva al contatore di azzerarsi e dopo circa mezz'ora arrivava un 429); token ntfy inviato solo al server per cui era stato salvato; un token Telegram non valido non cancella più quello salvato e mostra un avviso; nessuna sottoscrizione push persa se un dispositivo si attiva durante un invio; con WooCommerce attivo il Gestore form raggiunge di nuovo il proprio profilo.
+
+### 2.23.0 — WooCommerce: risposte e ordini del cliente
+
+Nessuna migrazione dello schema. Il modulo si attiva solo con WooCommerce.
+
+- **Ordini del cliente nel dettaglio di una risposta**, trovati per email di fatturazione e per account registrato; **"Ordini del negozio"** nella web app.
+- **Compatibilità HPOS dichiarata** (`FeaturesUtil::declare_compatibility`); solo `wc_get_orders()`, testato con archiviazione HPOS e classica.
+- **API:** `GET /orders` e `GET /submissions/{id}/orders`, con la capability `edit_shop_orders` (filter `dbfb_orders_capability`).
+- **Repository:** `subject_email()` restituisce l'email dell'interessato con la stessa regola di `subject_hash`.
+
+### 2.22.0 — Aggiornamenti in tempo reale e notifiche
+
+Nessuna migrazione dello schema. Le notifiche push sono pronte all'uso; ntfy e Telegram si configurano in Form Builder → Web app.
+
+- **Polling leggero** (`GET /updates`) ogni 15 secondi con l'app in primo piano, sospeso in background; conteggi aggiornati senza ricaricare e pulsante "Mostra le nuove risposte" nelle liste.
+- **Badge** sull'icona dell'app installata (Badging API).
+- **Web Push senza librerie:** chiavi VAPID generate al primo uso (option non autoload), JWT ES256 e cifratura `aes128gcm` (RFC 8291/8292) con OpenSSL di PHP. Funziona da PHP 7.4, anche sui server senza `openssl.cnf` (configurazione minima inclusa nel plugin). Sottoscrizioni per utente e per dispositivo (massimo 10), rimosse quando il push service le dichiara scadute e al logout dalla web app.
+- **ntfy e Telegram** come canali alternativi, con notifica di prova dall'admin.
+- **Privacy:** nessun dato delle risposte nelle notifiche; titolo del form disattivabile; endpoint push limitati ai servizi dei browser; nuova voce nel registro dei trattamenti. La disinstallazione rimuove chiavi, impostazioni, token e sottoscrizioni.
+
+### 2.21.0 — Web app delle risposte
+
+Nessuna migrazione dello schema. Le regole di rewrite di `/dbfb-app/` si registrano da sole dopo l'aggiornamento.
+
+- **Web app (PWA) su `/dbfb-app/`:** elenco dei form con risposte nuove, risposte filtrate per stato, dettaglio con allegati e consensi, cambio di stato, tema chiaro e scuro, installabile su Android, iOS e desktop. Vedi la sezione "Web app delle risposte".
+- **Service worker** con scope `/dbfb-app/`: in cache solo l'interfaccia, mai le risposte. A sito irraggiungibile l'app si apre comunque e lo segnala.
+- **Shell senza dati personali e senza `wp_head()`**, con Content Security Policy, `X-Frame-Options: DENY`, header `no-store` e `DONOTCACHEPAGE`.
+- **Login del "Gestore form"** reindirizzato all'app; nuova pagina admin Form Builder → Web app con link e istruzioni di installazione.
+- **API:** nuova rotta `GET /me`.
+
+### 2.20.0 — API REST e ruolo "Gestore form"
+
+Nessuna migrazione dello schema. Capability e ruolo si installano da soli al primo accesso all'admin dopo l'aggiornamento.
+
+- **API REST `dbfb/v1`:** form, risposte paginate con filtri per form, stato e `since_id`, dettaglio, cambio di stato, statistiche per giorno. Vedi la sezione "API REST".
+- **Capability `dbfb_view_submissions`** assegnata all'amministratore, e nuovo **ruolo "Gestore form"** che ha solo questa capability (più `read`). Disinstallando il plugin si rimuovono entrambi.
+- **Sicurezza:** permessi verificati su ogni rotta, parametri validati dallo schema (`400` se non validi), rate limit per utente, header `no-store`, allegati solo con link firmati di 15 minuti, niente IP.
+- `DBFB_Submissions::signed_attachment_url()` accetta una durata del link (secondo parametro, facoltativo).
+
+### 2.19.0 — Stato delle risposte e repository
+
+Migrazione dello schema v6 → v7, automatica e idempotente. Le risposte già presenti diventano "lette".
+
+- **Stato della risposta:** nuova colonna `status` (`new`, `read`, `archived`). In Risposte: badge di stato, tab di filtro con i conteggi, azioni di massa "Segna come lette / come nuove / Archivia"; aprire il dettaglio di una risposta nuova la segna come letta. L'elenco dei form mostra quante risposte nuove ha ciascuno.
+- **Paginazione:** la pagina di un form mostra 50 risposte alla volta; prima caricava tutte le risposte in una sola pagina. L'elenco dei form calcola i totali con una query sola invece di una per form.
+- **Interessato indicizzato:** nuova colonna `subject_hash`, HMAC-SHA256 dell'email dell'interessato con lo stesso segreto dei consensi facoltativi. Nessuna email in chiaro in più nel database. Le risposte esistenti vengono completate a batch da un cron (`dbfb_backfill_subject_hash`, 500 righe al minuto). Prepara il collegamento ai clienti WooCommerce.
+- **`DBFB_Submissions_Repository`:** un'unica classe per leggere, contare, scrivere e cancellare le risposte. La cancellazione (riga, allegati, webhook deliveries, consensi) passa da un solo punto per eliminazione singola, multipla, totale, eliminazione del form ed eraser DSAR. `DB_Form_Builder::delete_form_submissions()` resta come wrapper.
+- **Salvataggio più robusto:** l'INSERT scarta le colonne che una migrazione non riuscita non ha creato, invece di perdere la risposta.
+- **Nuova action `dbfb_submission_saved`** dopo il salvataggio di una risposta.
 
 ### 2.18.3 — PHPCS a zero warning
 
@@ -807,6 +978,9 @@ Allineamento al pattern dell'ecosistema DB (DB Cookie Manager 3.0.2 + DB SEO Man
 
 - WordPress 5.8+
 - PHP 7.4+
+- Web app installabile e offline: permalink diversi da "Semplice" e sito in HTTPS
+- Notifiche push (facoltative): estensione OpenSSL con curve ellittiche e AES-GCM, presente nelle installazioni PHP standard. Senza, restano ntfy e Telegram
+- WooCommerce (facoltativo): testato con WooCommerce 11.2, archiviazione ordini HPOS e classica
 
 ## Struttura
 
@@ -820,6 +994,17 @@ db-form-builder/
 │   ├── class-builder.php            # Form builder, save, sanitize, templates
 │   ├── class-submit.php             # Submit, honeypot, GDPR, reCAPTCHA gating, file upload, webhook
 │   ├── class-submissions.php        # Risposte, CSV export, download protetto allegati
+│   ├── class-submissions-repository.php # Accesso unico alla tabella risposte: query, stato, cancellazione, subject_hash (2.19.0+)
+│   ├── class-links.php              # Collegamenti risposta → oggetti esterni, es. ordini (2.24.0+)
+│   ├── class-roles.php              # Capability dbfb_view_submissions e ruolo "Gestore form" (2.20.0+)
+│   ├── class-rest.php               # API REST dbfb/v1 (2.20.0+)
+│   ├── class-app.php                # Web app: rotte /dbfb-app/, shell, manifest, service worker (2.21.0+)
+│   ├── class-web-push.php           # Web Push senza librerie: VAPID, cifratura RFC 8291 (2.22.0+)
+│   ├── class-notifications.php      # Notifiche: push, ntfy, Telegram, polling /updates (2.22.0+)
+│   ├── openssl.cnf                  # Configurazione OpenSSL minima per i server che ne sono privi (2.22.0+)
+│   ├── woo/
+│   │   ├── class-woo.php            # WooCommerce: ordini del cliente, ordini del negozio (2.23.0+, solo con Woo attivo)
+│   │   └── class-woo-order-builder.php # Ordine da una risposta: bozza, creazione, link di pagamento (2.24.0+)
 │   ├── class-email.php              # Placeholder, invio email, test
 │   ├── class-prefill.php            # Precompilazione da URL: tipi ammessi, parametri (2.15.0+)
 │   ├── class-consents.php           # Consensi facoltativi: prova, revoca, DSAR, registro Hub (2.16.0+)
@@ -839,12 +1024,16 @@ db-form-builder/
 │   │   ├── db-admin-ui.css          # Design system condiviso dei plugin DB (2.13.0+)
 │   │   ├── admin.css
 │   │   └── frontend.css
+│   ├── app/                         # Web app (2.21.0+): app.js, app.css, sw.js, icone
 │   └── js/
 │       ├── admin.js                 # Builder, condizionale, file settings
 │       ├── frontend.js              # Submit, condizionale, precompilazione, eventi, file drag&drop, multi-step
 │       └── gutenberg-block.js
 └── templates/
+    ├── app/
+    │   └── shell.php                # Shell HTML della web app (2.21.0+)
     ├── admin/
+    │   ├── app.php                  # Pagina "Web app" (2.21.0+)
     │   ├── forms-list.php
     │   ├── form-builder.php
     │   ├── settings.php

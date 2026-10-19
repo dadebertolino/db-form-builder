@@ -1,0 +1,7 @@
+# DB Form Builder — configurazione OpenSSL minima (2.22.0).
+# Usata solo se openssl_pkey_new() fallisce perché il server non ha un
+# openssl.cnf leggibile: serve a generare le chiavi delle notifiche push.
+[ req ]
+distinguished_name = req_distinguished_name
+
+[ req_distinguished_name ]

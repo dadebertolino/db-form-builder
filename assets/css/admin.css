@@ -425,6 +425,70 @@
     font-weight: 600;
 }
 
+/* 2.19.0: stato delle risposte, filtri e paginazione */
+.dbfb-status-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin: 0 0 10px;
+}
+.dbfb-status-tabs a {
+    text-decoration: none;
+    padding: 4px 0;
+}
+.dbfb-status-tabs a.current {
+    font-weight: 600;
+    color: #1d2327;
+    border-bottom: 2px solid #2271b1;
+}
+.dbfb-status-tabs .count {
+    color: #50575e;
+    font-weight: 400;
+}
+.dbfb-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    background: #f0f0f1;
+    color: #3c434a;
+}
+.dbfb-status-new {
+    background: #dbeafe;
+    color: #1e3a8a;
+    font-weight: 600;
+}
+.dbfb-status-archived {
+    background: #fff;
+    color: #50575e;
+    border: 1px solid #c3c4c7;
+}
+.dbfb-sub-row.is-new td {
+    font-weight: 600;
+}
+.dbfb-sub-row.is-archived td {
+    color: #50575e;
+}
+.dbfb-pagination {
+    margin-top: 12px;
+}
+.dbfb-pagination .page-numbers {
+    display: inline-block;
+    min-width: 30px;
+    padding: 4px 8px;
+    margin-right: 4px;
+    text-align: center;
+    text-decoration: none;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    background: #fff;
+}
+.dbfb-pagination .page-numbers.current {
+    background: #2271b1;
+    border-color: #2271b1;
+    color: #fff;
+}
+
 .dbfb-notice {
     padding: 12px 15px;
     border-left: 4px solid #00a32a;
