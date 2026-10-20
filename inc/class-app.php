@@ -164,6 +164,9 @@ class DBFB_App {
             'SHELL'   => self::url(),
             'ASSETS'  => array_values(array_unique($assets)),
             'NAME'    => DBFB_App_Branding::settings()['name'],
+            // 2.25.0: per registrare sul sito una sottoscrizione rinnovata dal browser.
+            'SUB_URL'   => esc_url_raw(rest_url(DBFB_REST::NAMESPACE_V1 . '/push/subscription')),
+            'NONCE_URL' => add_query_arg('action', 'rest-nonce', admin_url('admin-ajax.php')),
         );
         echo 'self.DBFB_SW = ' . wp_json_encode($vars, JSON_UNESCAPED_SLASHES) . ";\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON per uno script JS, non HTML.
         // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.Security.EscapeOutput.OutputNotEscaped -- file JS locale del plugin.

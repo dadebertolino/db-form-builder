@@ -568,6 +568,7 @@ Nessuna migrazione dello schema.
 - **Notifiche più semplici da attivare:** in home un invito compatto ("Attiva le notifiche" / "Non ora") che compare una sola volta; in Impostazioni lo stato e, quando servono, istruzioni passo passo per installare l'app su iPhone o sbloccare le notifiche su Android, iPhone e PC.
 - **Identità del sito:** l'app usa l'Icona del sito di WordPress e un nome e un colore impostabili in Form Builder → Web app → Aspetto dell'app (anteprima inclusa). Dal colore si ricavano barra, pulsanti e link con contrasto WCAG AA garantito, in tema chiaro e scuro, anche per colori molto chiari o toni medi. Nome, colore e icona arrivano anche nel manifest (schermata Home) e nel titolo.
 - **Sicurezza:** i colori sono applicati con un blocco `<style>` autorizzato dalla Content Security Policy tramite hash; le icone del sito possono stare anche su una CDN.
+- **Notifiche push più affidabili:** una sottoscrizione appena creata può risultare per qualche secondo "scaduta" sul servizio push (FCM risponde 410 e poi, pochi secondi dopo, 201). Prima il sito la cancellava e il dispositivo smetteva di ricevere notifiche senza accorgersene. Ora nei primi 10 minuti un 404/410 non la cancella; all'apertura l'app verifica che il sito conosca la sottoscrizione del dispositivo e, se serve, ne crea una nuova senza chiedere nulla; "Invia una prova" ripara e riprova; il service worker gestisce `pushsubscriptionchange`. Nuova rotta `GET /push/subscription?endpoint=…`.
 
 ### 2.24.1 — Application Passwords: causa e correzione nell'avviso
 

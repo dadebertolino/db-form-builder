@@ -93,6 +93,30 @@
         event.waitUntil(Promise.all([self.registration.showNotification(data.title || 'Nuova risposta', options), badge]));
     });
 
+    // 2.25.0: il browser ha rinnovato la sottoscrizione (o il push service
+    // l'ha invalidata): se ne crea una nuova con le stesse opzioni e la si
+    // registra sul sito, con un nonce chiesto al momento (cookie di sessione).
+    self.addEventListener('pushsubscriptionchange', function (event) {
+        var old = event.oldSubscription;
+        var options = old && old.options ? old.options : null;
+        if (!options || !CFG.SUB_URL) return;
+        event.waitUntil(
+            self.registration.pushManager.subscribe(options).then(function (sub) {
+                return fetch(CFG.NONCE_URL, { credentials: 'same-origin', cache: 'no-store' })
+                    .then(function (r) { return r.text(); })
+                    .then(function (nonce) {
+                        var j = sub.toJSON();
+                        return fetch(CFG.SUB_URL, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce.trim() },
+                            body: JSON.stringify({ endpoint: j.endpoint, keys: j.keys })
+                        });
+                    });
+            }).catch(function () { /* l'app si riallinea alla prossima apertura */ })
+        );
+    });
+
     self.addEventListener('notificationclick', function (event) {
         event.notification.close();
         var target = (event.notification.data && event.notification.data.url) || SHELL;

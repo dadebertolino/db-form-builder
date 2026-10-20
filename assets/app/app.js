@@ -808,6 +808,25 @@
         });
     }
 
+    /**
+     * Autoriparazione (2.25.0): se il browser ha una sottoscrizione che il
+     * sito non conosce più (rimossa dopo un 404/410 del push service, o mai
+     * registrata), se ne crea una nuova. Il permesso è già concesso, quindi
+     * il browser non chiede nulla.
+     */
+    function syncSubscription() {
+        if (!me || !me.notifications || !me.notifications.push || !pushSupported() || Notification.permission !== 'granted') {
+            return Promise.resolve(null);
+        }
+        return currentSubscription().then(function (sub) {
+            if (!sub) return null;
+            return api('push/subscription', { params: { endpoint: sub.endpoint } }).then(function (r) {
+                if (r.data && r.data.known) return sub;
+                return sub.unsubscribe().then(subscribePush);
+            });
+        });
+    }
+
     function unsubscribePush() {
         return currentSubscription().then(function (sub) {
             if (!sub) return null;
@@ -920,8 +939,20 @@
                 var test = h('button', { type: 'button', 'class': 'btn', text: S.pushTest });
                 test.addEventListener('click', function () {
                     test.disabled = true;
-                    api('push/test', { method: 'POST' }).then(function (r) {
-                        announce(r.data.sent > 0 ? S.pushTestSent : S.pushTestFailed);
+                    var send = function () { return api('push/test', { method: 'POST' }).then(function (r) { return r.data.sent > 0; }); };
+                    var wait = function (ms) { return new Promise(function (resolve) { window.setTimeout(resolve, ms); }); };
+                    // Non arrivata: si ripara la sottoscrizione se il sito non la
+                    // conosce più, poi si riprova due volte a 4 secondi di distanza
+                    // (una sottoscrizione nuova impiega qualche istante a
+                    // propagarsi sul push service).
+                    var retry = function (ok, left) {
+                        if (ok || left === 0) return ok;
+                        return wait(4000).then(send).then(function (r) { return retry(r, left - 1); });
+                    };
+                    send().then(function (ok) {
+                        return ok ? ok : syncSubscription().then(send).then(function (r) { return retry(r, 2); });
+                    }).then(function (ok) {
+                        announce(ok ? S.pushTestSent : S.pushTestFailed);
                     }, function () { announce(S.pushTestFailed); }).then(function () { test.disabled = false; });
                 });
                 var off = h('button', { type: 'button', 'class': 'btn', text: S.pushDisable });
@@ -1024,6 +1055,7 @@
         api('me').then(function (res) {
             me = res.data;
             meResolve(me);
+            syncSubscription().catch(function () { /* si riprova alla prossima apertura */ });
             // La home dipende da /me per la voce degli ordini: si aggiorna senza spostare il focus.
             if (me.woo && me.woo.orders && parseHash().seg.length === 0) render(true);
             startPolling();
