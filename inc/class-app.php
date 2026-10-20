@@ -490,6 +490,140 @@ class DBFB_App {
         return $result;
     }
 
+    /**
+     * Perché le Application Passwords non sono disponibili (2.24.1).
+     *
+     * WordPress le abilita solo se is_ssl() è vero (o in ambiente "local"),
+     * poi le passa al filter wp_is_application_passwords_available. Le cause
+     * tipiche sono quindi due:
+     *  - no_ssl:   il sito è in HTTPS ma l'HTTPS termina su un proxy
+     *              dell'hosting e PHP riceve la richiesta in HTTP, senza
+     *              $_SERVER['HTTPS']; se il proxy lo segnala con un header
+     *              noto, si propone lo snippet per wp-config.php;
+     *  - filtered: un plugin (tipicamente di sicurezza) le disattiva col filter.
+     * Calcolata a ogni apertura della pagina: costa poco e così una correzione
+     * in wp-config.php si vede subito.
+     *
+     * @param array|null $server Variabili del server ($_SERVER se null; parametro per i test).
+     * @return array {
+     *     available: bool,
+     *     reason:    'ok' | 'no_ssl' | 'http_site' | 'filtered',
+     *     header:    string Header del proxy che indica HTTPS ('' se nessuno),
+     *     snippet:   string Codice per wp-config.php ('' se non serve o non deducibile),
+     *     plugins:   string[] Plugin agganciati al filter (solo per 'filtered'),
+     * }
+     */
+    public static function app_passwords_diagnosis($server = null) {
+        $server = is_array($server) ? $server : $_SERVER;
+        $out = array('available' => true, 'reason' => 'ok', 'header' => '', 'snippet' => '', 'plugins' => array());
+
+        if (!function_exists('wp_is_application_passwords_available') || wp_is_application_passwords_available()) {
+            return $out;
+        }
+        $out['available'] = false;
+
+        if (wp_is_application_passwords_supported()) {
+            // HTTPS riconosciuto: le ha spente un filter.
+            $out['reason']  = 'filtered';
+            $out['plugins'] = self::plugins_on_filter('wp_is_application_passwords_available');
+            return $out;
+        }
+
+        if (strpos(home_url('/'), 'https://') !== 0) {
+            $out['reason'] = 'http_site';
+            return $out;
+        }
+
+        // Sito in https ma is_ssl() falso: cerca l'header con cui il proxy segnala HTTPS.
+        $out['reason'] = 'no_ssl';
+        $value = function ($key) use ($server) {
+            return isset($server[$key]) ? strtolower(trim((string) $server[$key])) : '';
+        };
+        $checks = array(
+            'X-Forwarded-Proto' => array('HTTP_X_FORWARDED_PROTO', "strpos(strtolower(\$_SERVER['HTTP_X_FORWARDED_PROTO']), 'https') !== false", function ($v) {
+                return in_array('https', array_map('trim', explode(',', $v)), true);
+            }),
+            'X-Forwarded-Ssl'   => array('HTTP_X_FORWARDED_SSL', "strtolower(\$_SERVER['HTTP_X_FORWARDED_SSL']) === 'on'", function ($v) {
+                return $v === 'on';
+            }),
+            'Front-End-Https'   => array('HTTP_FRONT_END_HTTPS', "strtolower(\$_SERVER['HTTP_FRONT_END_HTTPS']) === 'on'", function ($v) {
+                return $v === 'on';
+            }),
+            'CF-Visitor'        => array('HTTP_CF_VISITOR', "strpos(\$_SERVER['HTTP_CF_VISITOR'], '\"https\"') !== false", function ($v) {
+                return strpos($v, '"https"') !== false;
+            }),
+        );
+        foreach ($checks as $header => $check) {
+            list($key, $condition, $matches) = $check;
+            if ($value($key) !== '' && $matches($value($key))) {
+                $out['header']  = $header;
+                $out['snippet'] = "// HTTPS gestito da un proxy dell'hosting (header $header): lo comunica a WordPress.\n"
+                    . "if (isset(\$_SERVER['$key']) && $condition) {\n"
+                    . "    \$_SERVER['HTTPS'] = 'on';\n"
+                    . '}';
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Plugin che hanno agganciato un callback a un hook (per indicarli nell'avviso).
+     *
+     * @param string $hook
+     * @return string[] Nomi dei plugin (o delle cartelle), senza duplicati.
+     */
+    private static function plugins_on_filter($hook) {
+        global $wp_filter;
+        if (empty($wp_filter[$hook]) || !is_object($wp_filter[$hook])) return array();
+
+        $plugin_dir = wp_normalize_path(WP_PLUGIN_DIR) . '/';
+        $mu_dir     = wp_normalize_path(WPMU_PLUGIN_DIR) . '/';
+        $names      = array();
+        foreach ($wp_filter[$hook]->callbacks as $callbacks) {
+            foreach ($callbacks as $cb) {
+                $fn = $cb['function'];
+                try {
+                    if (is_string($fn) && strpos($fn, '::') !== false) {
+                        $fn = explode('::', $fn, 2);
+                    }
+                    if (is_array($fn)) {
+                        $ref = new ReflectionMethod(is_object($fn[0]) ? get_class($fn[0]) : $fn[0], $fn[1]);
+                    } elseif (is_string($fn) && in_array($fn, array('__return_false', '__return_true', '__return_zero'), true)) {
+                        $names[] = $fn;
+                        continue;
+                    } else {
+                        $ref = new ReflectionFunction($fn);
+                    }
+                } catch (ReflectionException $e) {
+                    continue;
+                }
+                $file = wp_normalize_path((string) $ref->getFileName());
+                if (strpos($file, $plugin_dir) === 0) {
+                    $slug = strtok(substr($file, strlen($plugin_dir)), '/');
+                    $names[] = self::plugin_name($slug);
+                } elseif (strpos($file, $mu_dir) === 0) {
+                    $names[] = 'mu-plugin: ' . basename($file);
+                } elseif (strpos($file, wp_normalize_path(get_theme_root())) === 0) {
+                    $names[] = __('il tema attivo', 'db-form-builder');
+                }
+            }
+        }
+        return array_values(array_unique($names));
+    }
+
+    private static function plugin_name($slug) {
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        foreach (get_plugins() as $file => $data) {
+            if (strtok($file, '/') === $slug && !empty($data['Name'])) {
+                return $data['Name'];
+            }
+        }
+        return $slug;
+    }
+
     public static function render_admin_page() {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Permessi insufficienti', 'db-form-builder'));
@@ -502,6 +636,8 @@ class DBFB_App {
         $push_supported = DBFB_Web_Push::is_supported();
         // 2.24.0: API REST raggiungibili e Application Passwords.
         $health = self::health_check(isset($_GET['dbfb_recheck']) && check_admin_referer('dbfb_recheck')); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- nonce verificato da check_admin_referer().
+        // 2.24.1: causa precisa se le Application Passwords non sono disponibili.
+        $app_pw = self::app_passwords_diagnosis();
         include DBFB_PLUGIN_DIR . 'templates/admin/app.php';
     }
 }

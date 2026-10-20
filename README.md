@@ -273,7 +273,7 @@ curl -u "utente:xxxx xxxx xxxx xxxx xxxx xxxx" \
 - allegati solo tramite link firmati che scadono dopo 15 minuti;
 - rate limit per utente: 120 richieste al minuto, regolabile con i filter `dbfb_rest_rate_limit` e `dbfb_rest_rate_window`. Oltre il limite si riceve `429`.
 
-**Nota:** alcuni plugin di sicurezza bloccano `/wp-json/` o disattivano le Application Passwords. Se le chiamate rispondono `401` o `404` con le credenziali giuste, controlla le loro impostazioni. Dalla 2.24.0 la pagina Form Builder → Web app lo verifica da sola (richiesta di prova alle API, ripetibile) e mostra un avviso se le API sono bloccate o le Application Passwords non sono disponibili.
+**Nota:** alcuni plugin di sicurezza bloccano `/wp-json/` o disattivano le Application Passwords. Se le chiamate rispondono `401` o `404` con le credenziali giuste, controlla le loro impostazioni. Dalla 2.24.0 la pagina Form Builder → Web app lo verifica da sola (richiesta di prova alle API, ripetibile) e mostra un avviso se le API sono bloccate o le Application Passwords non sono disponibili. Dalla 2.24.1 l'avviso indica anche la causa: HTTPS gestito da un proxy dell'hosting che WordPress non rileva (con le righe da aggiungere a `wp-config.php`), oppure il plugin che le ha disattivate.
 
 `submitted_at` è nel formato `Y-m-d H:i:s` con l'orologio del database, lo stesso mostrato nell'admin.
 
@@ -557,6 +557,16 @@ Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. 
 - Web app (2.21.0+): navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci `aria-live` per aggiornamenti e cambi di stato, errori dei moduli associati ai campi (`aria-invalid` + `aria-describedby`), tema chiaro/scuro con contrasti AA
 
 ## Changelog
+
+### 2.24.1 — Application Passwords: causa e correzione nell'avviso
+
+Nessuna migrazione dello schema.
+
+- **Avviso diagnostico** in Form Builder → Web app quando le Application Passwords non sono disponibili. Invece del generico "sito senza HTTPS o disattivate da un plugin", indica la causa:
+  - **HTTPS su un proxy dell'hosting:** il sito è in https ma a PHP la richiesta arriva in HTTP, quindi `is_ssl()` è falso. Se il proxy lo segnala con un header noto (`X-Forwarded-Proto`, `X-Forwarded-Ssl`, `Front-End-Https`, `CF-Visitor`), l'avviso mostra le righe da aggiungere a `wp-config.php` per quell'header; altrimenti suggerisce di chiedere all'hosting.
+  - **Disattivate da un plugin:** elenca i plugin agganciati al filter `wp_is_application_passwords_available`.
+  - **Sito senza HTTPS.**
+- La diagnosi si ricalcola a ogni apertura della pagina, così una correzione in `wp-config.php` si vede subito.
 
 ### 2.24.0 — Ordine WooCommerce da una risposta
 
