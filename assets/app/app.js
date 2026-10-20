@@ -15,6 +15,8 @@
  * 2.23.0: con WooCommerce, #/o (ordini del negozio) e ordini del cliente
  * nel dettaglio di una risposta.
  * 2.24.0: #/s/{id}/ordine, ordine "in attesa di pagamento" da una risposta.
+ * 2.25.0: #/impostazioni (notifiche, tema, account), invito alle notifiche in
+ * home una sola volta, identità del sito nella barra.
  */
 (function () {
     'use strict';
@@ -28,9 +30,8 @@
     var live = document.getElementById('app-live');
     var backBtn = document.getElementById('app-back');
     var titleEl = document.getElementById('app-title');
-    var themeBtn = document.getElementById('app-theme');
-    var logoutLink = document.getElementById('app-logout');
-    var userEl = document.getElementById('app-user');
+    var logoEl = document.getElementById('app-logo');
+    var settingsLink = document.getElementById('app-settings');
     var offlineBanner = document.getElementById('app-offline');
 
     var nonce = '';
@@ -171,13 +172,17 @@
     // =========================================================
 
     function setView(opts, nodes) {
-        titleEl.textContent = opts.barTitle || S.appTitle;
+        titleEl.textContent = opts.barTitle || C.appName;
         backBtn.hidden = !opts.back;
+        // Logo del sito solo in home: nelle altre viste c'è il pulsante Indietro.
+        logoEl.hidden = !!opts.back;
+        // In Impostazioni l'ingranaggio porterebbe alla pagina stessa.
+        settingsLink.hidden = !!opts.isSettings;
         backBtn.dataset.target = opts.back || '';
         main.textContent = '';
         nodes.forEach(function (n) { if (n) main.appendChild(n); });
         main.setAttribute('aria-busy', 'false');
-        document.title = (opts.docTitle ? opts.docTitle + ' — ' : '') + S.appTitle + ' — ' + C.siteName;
+        document.title = (opts.docTitle ? opts.docTitle + ' — ' : '') + C.appName;
         // Focus sul titolo della vista (WCAG 2.4.3).
         var heading = main.querySelector('h1');
         if (heading && opts.focus !== false && !quiet) heading.focus();
@@ -237,7 +242,7 @@
                     )
                 )
             );
-            var pushCard = h('section', { 'class': 'card push-card', id: 'push-card', 'aria-labelledby': 'push-title', hidden: true });
+            var pushCard = pushInvite();
             var ordersEntry = (me && me.woo && me.woo.orders) ? h('ul', { 'class': 'list spaced' },
                 h('li', null, h('a', { href: '#/o' },
                     h('span', { 'class': 'main' }, h('span', { 'class': 'title', text: S.storeOrders }))
@@ -251,7 +256,6 @@
                 ordersEntry,
                 pushCard
             ]);
-            updatePushCard(pushCard);
         });
     }
 
@@ -701,6 +705,8 @@
             run = function () { return viewSubmissions(token, parseInt(seg[1], 10), status); };
         } else if (seg[0] === 's' && /^\d+$/.test(seg[1] || '') && seg[2] === 'ordine') {
             run = function () { return viewCreateOrder(token, parseInt(seg[1], 10)); };
+        } else if (seg[0] === 'impostazioni') {
+            run = function () { return viewSettings(token); };
         } else if (seg[0] === 'o') {
             run = function () { return viewOrders(token); };
         } else if (seg[0] === 's' && /^\d+$/.test(seg[1] || '')) {
@@ -811,40 +817,106 @@
         });
     }
 
-    function updatePushCard(card) {
-        if (!card || !me || !me.notifications || !me.notifications.push) return;
-        var body = h('div');
-        card.textContent = '';
-        card.appendChild(h('h2', { id: 'push-title', text: S.notifications }));
-        card.appendChild(body);
-        card.hidden = false;
+    function isStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    }
 
-        function message(text) { body.appendChild(h('p', { 'class': 'muted', text: text })); }
+    function pushDismissed() {
+        try { return window.localStorage.getItem('dbfb-app-push-later') === '1'; } catch (e) { return false; }
+    }
+
+    // ---- Invito in home (2.25.0): una sola volta, poi solo in Impostazioni ----
+    function pushInvite() {
+        var box = h('section', { 'class': 'card invite', 'aria-labelledby': 'invite-title', hidden: true });
+        meReady.then(function (info) {
+            if (!info || !info.notifications || !info.notifications.push || !pushSupported()) return null;
+            if (Notification.permission !== 'default' || pushDismissed()) return null;
+            return currentSubscription().then(function (sub) {
+                if (sub) return;
+                var enable = h('button', { type: 'button', 'class': 'btn primary', text: S.pushEnable });
+                var later = h('button', { type: 'button', 'class': 'btn', text: S.notNow });
+                box.appendChild(h('h2', { id: 'invite-title', text: S.inviteTitle }));
+                box.appendChild(h('p', { text: S.inviteText }));
+                box.appendChild(h('p', { 'class': 'hint', text: S.permissionHint }));
+                box.appendChild(h('div', { 'class': 'actions' }, enable, later));
+                box.hidden = false;
+
+                enable.addEventListener('click', function () {
+                    enable.disabled = true;
+                    subscribePush().then(function () {
+                        box.textContent = '';
+                        var done = h('p', { role: 'status', tabindex: '-1', text: S.inviteDone });
+                        box.appendChild(done);
+                        done.focus();
+                    }, function (err) {
+                        enable.disabled = false;
+                        if (err instanceof AuthError) { errorView(err); return; }
+                        announce(err && err.message === 'denied' ? S.pushDenied : S.pushError);
+                    });
+                });
+                later.addEventListener('click', function () {
+                    try { window.localStorage.setItem('dbfb-app-push-later', '1'); } catch (e) { /* si richiederà alla prossima apertura */ }
+                    box.remove();
+                    announce(S.inviteLater);
+                    var heading = main.querySelector('h1');
+                    if (heading) heading.focus();
+                });
+            });
+        }).catch(function () { /* nessun invito */ });
+        return box;
+    }
+
+    // ---- Notifiche in Impostazioni: stato, istruzioni passo passo, azioni ----
+    function steps(list) {
+        return h('ol', { 'class': 'howto' }, list.map(function (t) { return h('li', { text: t }); }));
+    }
+
+    function renderPushSettings(body) {
+        body.textContent = '';
+        function para(text, cls) { body.appendChild(h('p', { 'class': cls || '', text: text })); }
         function busy(btn, fn) {
             return function () {
                 btn.disabled = true;
-                fn().then(function () { updatePushCard(card); }, function (err) {
+                fn().then(function () {
+                    renderPushSettings(body);
+                    var first = body.querySelector('button');
+                    if (first) first.focus();
+                }, function (err) {
                     btn.disabled = false;
                     if (err instanceof AuthError) { errorView(err); return; }
                     announce(err && err.message === 'denied' ? S.pushDenied : S.pushError);
-                    updatePushCard(card);
+                    renderPushSettings(body);
                 });
             };
         }
 
+        if (!me || !me.notifications || !me.notifications.push) {
+            para(S.pushSiteOff, 'muted');
+            return;
+        }
         if (!pushSupported()) {
-            var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-            message(isIos() && !standalone ? S.pushIos : S.pushUnsupported);
+            if (isIos() && !isStandalone()) {
+                para(S.pushIosIntro);
+                body.appendChild(steps(S.pushIosSteps));
+            } else {
+                para(S.pushUnsupported, 'muted');
+            }
             return;
         }
         if (Notification.permission === 'denied') {
-            message(S.pushDenied);
+            para(S.pushBlocked);
+            var how = isIos() ? S.unblockIos : (/Android/i.test(navigator.userAgent) ? (isStandalone() ? S.unblockAndroidApp : S.unblockAndroid) : S.unblockDesktop);
+            body.appendChild(steps(how));
+            body.appendChild(h('div', { 'class': 'actions' }, h('button', {
+                type: 'button', 'class': 'btn', text: S.recheck,
+                onclick: function () { renderPushSettings(body); announce(Notification.permission === 'denied' ? S.stillBlocked : S.pushOff); }
+            })));
             return;
         }
         currentSubscription().then(function (sub) {
             var actions = h('div', { 'class': 'actions' });
             if (sub) {
-                message(S.pushOn);
+                body.appendChild(h('p', { 'class': 'status-on' }, h('span', { 'class': 'dot', 'aria-hidden': 'true' }), S.pushOn));
                 var test = h('button', { type: 'button', 'class': 'btn', text: S.pushTest });
                 test.addEventListener('click', function () {
                     test.disabled = true;
@@ -857,13 +929,62 @@
                 actions.appendChild(test);
                 actions.appendChild(off);
             } else {
-                message(S.pushOff);
+                para(S.pushOff);
+                para(S.permissionHint, 'hint');
                 var on = h('button', { type: 'button', 'class': 'btn primary', text: S.pushEnable });
                 on.addEventListener('click', busy(on, subscribePush));
                 actions.appendChild(on);
             }
             body.appendChild(actions);
-        }).catch(function () { message(S.pushUnsupported); });
+        }).catch(function () { para(S.pushUnsupported, 'muted'); });
+    }
+
+    // ---- Vista Impostazioni ----
+    function viewSettings(token) {
+        return meReady.then(function (info) {
+            if (token !== renderToken) return;
+            var pushBody = h('div');
+            var section = function (id, title) {
+                var children = Array.prototype.slice.call(arguments, 2);
+                return h('section', { 'class': 'settings-section', 'aria-labelledby': id }, h('h2', { id: id, text: title }), children);
+            };
+
+            var current = storedTheme();
+            var themeSet = h('fieldset', { 'class': 'choices' }, h('legend', { 'class': 'visually-hidden', text: S.theme }),
+                [['', S.themeAuto], ['light', S.themeLight], ['dark', S.themeDark]].map(function (opt) {
+                    var id = 'theme-' + (opt[0] || 'auto');
+                    var input = h('input', { type: 'radio', name: 'theme', id: id, value: opt[0], checked: opt[0] === current ? true : null });
+                    input.addEventListener('change', function () {
+                        try {
+                            if (opt[0]) window.localStorage.setItem('dbfb-app-theme', opt[0]);
+                            else window.localStorage.removeItem('dbfb-app-theme');
+                        } catch (e) { /* solo per questa sessione */ }
+                        applyTheme(opt[0]);
+                    });
+                    return h('div', { 'class': 'choice' }, input, h('label', { 'for': id, text: opt[1] }));
+                })
+            );
+
+            var logout = h('button', { type: 'button', 'class': 'btn', text: S.logout, onclick: function () { doLogout(); } });
+
+            setView({ back: '#/', barTitle: S.settings, docTitle: S.settings, isSettings: true }, [
+                h('h1', { tabindex: '-1', text: S.settings }),
+                section('set-push', S.notifications, pushBody),
+                section('set-theme', S.theme, themeSet),
+                section('set-account', S.account,
+                    info && info.name ? h('p', null, S.loggedAs + ' ', h('strong', { text: info.name })) : null,
+                    h('div', { 'class': 'actions' }, logout)
+                ),
+                section('set-about', S.about,
+                    h('dl', { 'class': 'about' },
+                        h('dt', { text: S.appLabel }), h('dd', { text: C.appName }),
+                        h('dt', { text: S.siteLabel }), h('dd', null, h('a', { href: C.siteUrl, rel: 'noopener', text: C.siteName })),
+                        h('dt', { text: S.versionLabel }), h('dd', { text: C.version })
+                    )
+                )
+            ]);
+            renderPushSettings(pushBody);
+        });
     }
 
     // =========================================================
@@ -878,18 +999,11 @@
         try { return window.localStorage.getItem('dbfb-app-theme') || ''; } catch (e) { return ''; }
     }
 
+    // '' = automatico (segue il sistema), 'light', 'dark'.
     function applyTheme(theme) {
-        var dark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (theme) document.documentElement.setAttribute('data-theme', theme);
         else document.documentElement.removeAttribute('data-theme');
-        themeBtn.setAttribute('aria-pressed', dark ? 'true' : 'false');
     }
-
-    themeBtn.addEventListener('click', function () {
-        var next = themeBtn.getAttribute('aria-pressed') === 'true' ? 'light' : 'dark';
-        try { window.localStorage.setItem('dbfb-app-theme', next); } catch (e) { /* solo per questa sessione */ }
-        applyTheme(next);
-    });
     applyTheme(storedTheme());
 
     function updateOnline() {
@@ -897,7 +1011,7 @@
     }
     window.addEventListener('online', function () {
         updateOnline();
-        if (logoutLink.hidden) loadMe();
+        if (!me) loadMe();
         render();
     });
     window.addEventListener('offline', updateOnline);
@@ -909,13 +1023,7 @@
     function loadMe() {
         api('me').then(function (res) {
             me = res.data;
-            userEl.textContent = me.name || '';
-            if (me.logout_url) {
-                logoutLink.href = me.logout_url;
-                logoutLink.hidden = false;
-            }
             meResolve(me);
-            updatePushCard(document.getElementById('push-card'));
             // La home dipende da /me per la voce degli ordini: si aggiorna senza spostare il focus.
             if (me.woo && me.woo.orders && parseHash().seg.length === 0) render(true);
             startPolling();
@@ -924,11 +1032,11 @@
     loadMe();
 
     // Logout: prima si revoca la sottoscrizione push di questo dispositivo.
-    logoutLink.addEventListener('click', function (e) {
-        e.preventDefault();
-        var go = function () { setBadge(0); window.location.href = logoutLink.href; };
+    function doLogout() {
+        var url = me && me.logout_url;
+        var go = function () { setBadge(0); window.location.href = url || C.loginUrl; };
         unsubscribePush().then(go, go);
-    });
+    }
 
     if (C.swUrl && 'serviceWorker' in navigator) {
         navigator.serviceWorker.register(C.swUrl, { scope: C.swScope }).catch(function () { /* l'app funziona anche senza */ });

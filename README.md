@@ -200,7 +200,9 @@ Un'app installabile (PWA) per consultare le risposte da smartphone o PC, all'ind
 - **Accesso:** login di WordPress. Possono entrare gli amministratori e gli utenti con il ruolo **Gestore form**, che dopo il login arrivano direttamente all'app. Dalla 2.24.0 il Gestore form non entra nel resto dell'amministrazione (viene riportato all'app) e non vede la barra di amministrazione sul sito; resta accessibile solo il suo profilo, per cambiare la password.
 - **Viste:** elenco dei form con il numero di risposte nuove, risposte di un form con filtro per stato (nuove, lette, archiviate) e "Carica altre", dettaglio con campi, allegati, consenso e provenienza. Una risposta aperta diventa "letta"; dal dettaglio si può archiviare, ripristinare o rimettere tra le nuove.
 - **Installazione:** Android (Chrome) → menu ⋮ → "Installa app"; iPhone e iPad (Safari) → Condividi → "Aggiungi alla schermata Home"; Chrome ed Edge su PC → icona nella barra degli indirizzi.
-- **Tema chiaro e scuro** (automatico o scelto dall'icona nella barra), accessibilità WCAG 2.1 AA: navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci per gli screen reader, pulsanti da 44 px.
+- **Tema chiaro e scuro** (automatico o scelto in Impostazioni), accessibilità WCAG 2.1 AA: navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci per gli screen reader, pulsanti da 44 px.
+- **Impostazioni (2.25.0+):** dall'icona a ingranaggio, notifiche del dispositivo con istruzioni passo passo, tema, account ed "Esci".
+- **Identità del sito (2.25.0+):** nome, colore e icona dell'app si impostano in Form Builder → Web app → Aspetto dell'app; l'icona è l'Icona del sito di WordPress. I colori derivati rispettano sempre il contrasto WCAG AA.
 - **Nessuna build:** JavaScript e CSS senza dipendenze, in `assets/app/`.
 
 **Privacy:** il service worker tiene in cache solo l'interfaccia (HTML, CSS, JavaScript, icone). La shell HTML non contiene dati personali né nonce: utente, form e risposte arrivano dalle API a ogni apertura e non vengono salvati sul dispositivo. Sul dispositivo resta solo la scelta del tema (localStorage). La shell non carica `wp_head()`, quindi nessuno script del tema o di altri plugin, e ha una Content Security Policy che consente script, stili e connessioni solo verso il sito.
@@ -209,7 +211,7 @@ Un'app installabile (PWA) per consultare le risposte da smartphone o PC, all'ind
 
 - **Aggiornamento automatico:** con l'app aperta e in primo piano, ogni 15 secondi (regolabile da 10 a 300) l'app chiede al sito solo l'id dell'ultima risposta e il numero di nuove (`GET /updates`). Nell'elenco dei form i conteggi si aggiornano da soli; in una lista compare il pulsante "Mostra le nuove risposte", così il contenuto non si sposta mentre lo leggi. In background il controllo si ferma.
 - **Badge sull'icona** dell'app installata con il numero di risposte nuove, dove il sistema lo supporta (Badging API).
-- **Notifiche push:** ogni utente le attiva dalla scheda "Notifiche" della web app, sul singolo dispositivo, e da lì può inviarsi una prova. Su iPhone e iPad servono iOS 16.4 o successivo e l'app aggiunta alla schermata Home. Uscendo dall'app la sottoscrizione del dispositivo viene revocata. Il Web Push è implementato nel plugin senza librerie esterne (VAPID + cifratura RFC 8291 con OpenSSL di PHP): niente Composer e niente estensioni gmp o bcmath.
+- **Notifiche push:** ogni utente le attiva sul singolo dispositivo, dall'invito in home o da Impostazioni, dove può anche inviarsi una prova. Su iPhone e iPad servono iOS 16.4 o successivo e l'app aggiunta alla schermata Home. Uscendo dall'app la sottoscrizione del dispositivo viene revocata. Il Web Push è implementato nel plugin senza librerie esterne (VAPID + cifratura RFC 8291 con OpenSSL di PHP): niente Composer e niente estensioni gmp o bcmath.
 - **ntfy e Telegram** come alternativa (Form Builder → Web app → Notifiche): utili dove il push non arriva, per esempio iOS senza app installata. Pulsante "Invia una notifica di prova".
 - **Contenuto minimo:** "Nuova risposta", il titolo del form (disattivabile) e il link all'app. Mai i dati della risposta. Il payload push è cifrato per il singolo dispositivo; i push service ammessi sono solo quelli dei browser (Google, Mozilla, Apple, Microsoft; filter `dbfb_push_allowed_hosts`).
 - L'invio parte da un evento cron avviato subito dopo il salvataggio, così chi compila il form non aspetta.
@@ -557,6 +559,15 @@ Dalla 2.19.0 ogni risposta ha uno stato: **Nuova**, **Letta** o **Archiviata**. 
 - Web app (2.21.0+): navigazione da tastiera, focus sul titolo a ogni cambio di vista, annunci `aria-live` per aggiornamenti e cambi di stato, errori dei moduli associati ai campi (`aria-invalid` + `aria-describedby`), tema chiaro/scuro con contrasti AA
 
 ## Changelog
+
+### 2.25.0 — Impostazioni nella web app e identità del sito
+
+Nessuna migrazione dello schema.
+
+- **Impostazioni nella web app** (icona a ingranaggio nella barra): notifiche di questo dispositivo, tema (automatico, chiaro, scuro), account con "Esci", informazioni sull'app. La barra si alleggerisce: indietro, logo e nome, ingranaggio.
+- **Notifiche più semplici da attivare:** in home un invito compatto ("Attiva le notifiche" / "Non ora") che compare una sola volta; in Impostazioni lo stato e, quando servono, istruzioni passo passo per installare l'app su iPhone o sbloccare le notifiche su Android, iPhone e PC.
+- **Identità del sito:** l'app usa l'Icona del sito di WordPress e un nome e un colore impostabili in Form Builder → Web app → Aspetto dell'app (anteprima inclusa). Dal colore si ricavano barra, pulsanti e link con contrasto WCAG AA garantito, in tema chiaro e scuro, anche per colori molto chiari o toni medi. Nome, colore e icona arrivano anche nel manifest (schermata Home) e nel titolo.
+- **Sicurezza:** i colori sono applicati con un blocco `<style>` autorizzato dalla Content Security Policy tramite hash; le icone del sito possono stare anche su una CDN.
 
 ### 2.24.1 — Application Passwords: causa e correzione nell'avviso
 
@@ -1009,6 +1020,7 @@ db-form-builder/
 │   ├── class-roles.php              # Capability dbfb_view_submissions e ruolo "Gestore form" (2.20.0+)
 │   ├── class-rest.php               # API REST dbfb/v1 (2.20.0+)
 │   ├── class-app.php                # Web app: rotte /dbfb-app/, shell, manifest, service worker (2.21.0+)
+│   ├── class-app-branding.php       # Identità del sito nella web app: nome, colore, icona, contrasto (2.25.0+)
 │   ├── class-web-push.php           # Web Push senza librerie: VAPID, cifratura RFC 8291 (2.22.0+)
 │   ├── class-notifications.php      # Notifiche: push, ntfy, Telegram, polling /updates (2.22.0+)
 │   ├── openssl.cnf                  # Configurazione OpenSSL minima per i server che ne sono privi (2.22.0+)

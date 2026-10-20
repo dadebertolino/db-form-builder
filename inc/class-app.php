@@ -152,10 +152,18 @@ class DBFB_App {
         header('Content-Type: application/javascript; charset=utf-8');
 
         // Versione e asset iniettati qui: il file statico resta leggibile.
+        // 2.25.0: la versione include il branding (nome, colore, icona), così
+        // un cambio crea una nuova cache; le icone del sito vanno in cache.
+        $icons  = DBFB_App_Branding::icons();
+        $assets = array_values(self::asset_urls());
+        foreach (array('192', '512', 'apple') as $k) {
+            if (!empty($icons['site']) && $icons[$k]) $assets[] = $icons[$k];
+        }
         $vars = array(
-            'VERSION' => DBFB_VERSION,
+            'VERSION' => DBFB_VERSION . '-' . substr(md5(wp_json_encode(DBFB_App_Branding::settings()) . $icons['512']), 0, 8),
             'SHELL'   => self::url(),
-            'ASSETS'  => array_values(self::asset_urls()),
+            'ASSETS'  => array_values(array_unique($assets)),
+            'NAME'    => DBFB_App_Branding::settings()['name'],
         );
         echo 'self.DBFB_SW = ' . wp_json_encode($vars, JSON_UNESCAPED_SLASHES) . ";\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON per uno script JS, non HTML.
         // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.Security.EscapeOutput.OutputNotEscaped -- file JS locale del plugin.
@@ -166,25 +174,38 @@ class DBFB_App {
         self::no_cache_headers();
         header('Content-Type: application/manifest+json; charset=utf-8');
 
-        $assets = self::asset_urls();
         $start  = self::url();
         $scope  = self::has_pretty_permalinks() ? $start : home_url('/');
+        // 2.25.0: identità del sito (nome, colore, Icona del sito).
+        $brand  = DBFB_App_Branding::settings();
+        $icons  = DBFB_App_Branding::icons();
+        $list   = array(
+            array('src' => $icons['192'], 'sizes' => '192x192', 'purpose' => 'any'),
+            array('src' => $icons['512'], 'sizes' => '512x512', 'purpose' => 'any'),
+        );
+        if ($icons['maskable']) {
+            $list[] = array('src' => $icons['maskable'], 'sizes' => '512x512', 'purpose' => 'maskable');
+        }
+        foreach ($list as $i => $icon) {
+            $type = wp_check_filetype((string) wp_parse_url($icon['src'], PHP_URL_PATH));
+            if (!empty($type['type'])) $list[$i]['type'] = $type['type'];
+        }
         $manifest = array(
             'id'               => $start,
-            'name'             => __('Risposte ai form', 'db-form-builder') . ' — ' . wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES),
-            'short_name'       => __('Risposte', 'db-form-builder'),
-            'description'      => __('Le risposte ai form del sito, da smartphone o PC.', 'db-form-builder'),
+            'name'             => $brand['name'],
+            'short_name'       => $brand['name'],
+            'description'      => sprintf(
+                /* translators: %s: nome del sito */
+                __('Le risposte ai form di %s, da smartphone o PC.', 'db-form-builder'),
+                wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES)
+            ),
             'lang'             => 'it',
             'start_url'        => $start,
             'scope'            => $scope,
             'display'          => 'standalone',
             'background_color' => '#ffffff',
-            'theme_color'      => '#2271b1',
-            'icons'            => array(
-                array('src' => $assets['icon-192'], 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any'),
-                array('src' => $assets['icon-512'], 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any'),
-                array('src' => $assets['icon-maskable'], 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'),
-            ),
+            'theme_color'      => $brand['color'],
+            'icons'            => $list,
         );
         echo wp_json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- JSON del manifest.
     }
@@ -218,11 +239,14 @@ class DBFB_App {
             $origin = ($assets['scheme'] ?? 'https') . '://' . $assets['host'] . (isset($assets['port']) ? ':' . $assets['port'] : '');
             $self  .= ' ' . $origin;
         }
+        // 2.25.0: icone del sito (anche su CDN) e <style> inline del branding per hash.
+        $img    = implode(' ', array_unique(array_merge(explode(' ', $self), DBFB_App_Branding::icon_origins())));
+        $brand  = DBFB_App_Branding::csp_hash(DBFB_App_Branding::css());
         return implode('; ', array(
             "default-src 'self'",
             'script-src ' . $self,
-            'style-src ' . $self,
-            'img-src ' . $self . ' data:',
+            'style-src ' . $self . ' ' . $brand,
+            'img-src ' . $img . ' data:',
             'manifest-src ' . $self,
             "connect-src 'self'",
             "worker-src 'self'",
@@ -273,6 +297,9 @@ class DBFB_App {
             'swUrl'     => self::has_pretty_permalinks() ? self::url('sw') : '',
             'swScope'   => self::has_pretty_permalinks() ? wp_parse_url(self::url(), PHP_URL_PATH) : '',
             'perPage'   => 20,
+            // 2.25.0: identità del sito.
+            'appName'   => DBFB_App_Branding::settings()['name'],
+            'siteUrl'   => home_url('/'),
             'strings'   => self::strings(),
         );
     }
@@ -316,7 +343,7 @@ class DBFB_App {
             'revoked'        => __('Revocato', 'db-form-builder'),
             'attribution'    => __('Provenienza', 'db-form-builder'),
             'logout'         => __('Esci', 'db-form-builder'),
-            'themeDark'      => __('Tema scuro', 'db-form-builder'),
+            'themeDark'      => __('Scuro', 'db-form-builder'),
             'offline'        => __('Sei offline: i dati non si aggiornano finché la connessione non torna.', 'db-form-builder'),
             'sessionExpired' => __('La sessione è scaduta.', 'db-form-builder'),
             'login'          => __('Accedi', 'db-form-builder'),
@@ -392,6 +419,53 @@ class DBFB_App {
             'sendInvoiceNow' => __('Invia il link di pagamento al cliente', 'db-form-builder'),
             'backToSubmission' => __('Torna alla risposta', 'db-form-builder'),
             'alreadyLinked'  => __('Da questa risposta è già stato creato un ordine: controlla di non duplicarlo.', 'db-form-builder'),
+            // 2.25.0: Impostazioni e invito alle notifiche.
+            'settings'       => __('Impostazioni', 'db-form-builder'),
+            'theme'          => __('Tema', 'db-form-builder'),
+            'themeAuto'      => __('Automatico (come il telefono)', 'db-form-builder'),
+            'themeLight'     => __('Chiaro', 'db-form-builder'),
+            'account'        => __('Account', 'db-form-builder'),
+            'loggedAs'       => __('Collegato come', 'db-form-builder'),
+            'about'          => __('Informazioni', 'db-form-builder'),
+            'appLabel'       => __('App', 'db-form-builder'),
+            'siteLabel'      => __('Sito', 'db-form-builder'),
+            'versionLabel'   => __('Versione', 'db-form-builder'),
+            'inviteTitle'    => __('Avvisi sulle nuove risposte', 'db-form-builder'),
+            'inviteText'     => __('Ricevi una notifica su questo dispositivo quando arriva una risposta. Il messaggio non contiene i dati della risposta.', 'db-form-builder'),
+            'notNow'         => __('Non ora', 'db-form-builder'),
+            'inviteDone'     => __('Notifiche attive. Puoi provarle o disattivarle in Impostazioni (icona a ingranaggio in alto).', 'db-form-builder'),
+            'inviteLater'    => __('Va bene. Le notifiche si attivano quando vuoi da Impostazioni, con l\'icona a ingranaggio in alto.', 'db-form-builder'),
+            'permissionHint' => __('Dopo aver toccato il pulsante, il telefono chiede il permesso: scegli "Consenti".', 'db-form-builder'),
+            'pushSiteOff'    => __('Le notifiche non sono attive su questo sito. Le attiva l\'amministratore in Form Builder → Web app.', 'db-form-builder'),
+            'pushIosIntro'   => __('Su iPhone e iPad le notifiche funzionano solo con l\'app aggiunta alla schermata Home:', 'db-form-builder'),
+            'pushIosSteps'   => array(
+                __('In Safari tocca il pulsante Condividi (il quadrato con la freccia in su).', 'db-form-builder'),
+                __('Scegli "Aggiungi alla schermata Home" e conferma.', 'db-form-builder'),
+                __('Apri l\'app dall\'icona sulla schermata Home e torna qui, in Impostazioni.', 'db-form-builder'),
+            ),
+            'pushBlocked'    => __('Le notifiche sono bloccate per questa app. Per sbloccarle:', 'db-form-builder'),
+            'unblockAndroid' => array(
+                __('Tocca l\'icona accanto all\'indirizzo del sito, in alto.', 'db-form-builder'),
+                __('Apri "Autorizzazioni" (o "Impostazioni sito") e poi "Notifiche".', 'db-form-builder'),
+                __('Scegli "Consenti", poi torna qui e tocca "Ho cambiato l\'impostazione".', 'db-form-builder'),
+            ),
+            'unblockAndroidApp' => array(
+                __('Apri le Impostazioni del telefono, poi "App".', 'db-form-builder'),
+                __('Cerca questa app nell\'elenco e tocca "Notifiche".', 'db-form-builder'),
+                __('Attiva le notifiche, poi torna qui e tocca "Ho cambiato l\'impostazione".', 'db-form-builder'),
+            ),
+            'unblockIos'     => array(
+                __('Apri l\'app Impostazioni dell\'iPhone, poi "Notifiche".', 'db-form-builder'),
+                __('Cerca questa app nell\'elenco e attiva "Consenti notifiche".', 'db-form-builder'),
+                __('Torna qui e tocca "Ho cambiato l\'impostazione".', 'db-form-builder'),
+            ),
+            'unblockDesktop' => array(
+                __('Clicca l\'icona a sinistra dell\'indirizzo del sito.', 'db-form-builder'),
+                __('Alla voce "Notifiche" scegli "Consenti".', 'db-form-builder'),
+                __('Torna qui e clicca "Ho cambiato l\'impostazione".', 'db-form-builder'),
+            ),
+            'recheck'        => __('Ho cambiato l\'impostazione', 'db-form-builder'),
+            'stillBlocked'   => __('Le notifiche risultano ancora bloccate.', 'db-form-builder'),
         );
     }
 
@@ -638,6 +712,10 @@ class DBFB_App {
         $health = self::health_check(isset($_GET['dbfb_recheck']) && check_admin_referer('dbfb_recheck')); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- nonce verificato da check_admin_referer().
         // 2.24.1: causa precisa se le Application Passwords non sono disponibili.
         $app_pw = self::app_passwords_diagnosis();
+        // 2.25.0: identità del sito nella web app.
+        $brand   = DBFB_App_Branding::settings();
+        $palette = DBFB_App_Branding::palette();
+        $icons   = DBFB_App_Branding::icons();
         include DBFB_PLUGIN_DIR . 'templates/admin/app.php';
     }
 }
