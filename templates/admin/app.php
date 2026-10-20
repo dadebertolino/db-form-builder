@@ -9,6 +9,9 @@
  * @var bool   $push_supported  Il server può inviare Web Push (2.22.0).
  * @var array  $health          Esito del controllo delle API (2.24.0).
  * @var array  $app_pw          Diagnosi delle Application Passwords (2.24.1).
+ * @var array  $brand           Nome e colore dell'app (2.25.0).
+ * @var array  $palette         Colori ricavati dal colore principale (2.25.0).
+ * @var array  $icons           Icone dell'app (2.25.0).
  */
 if (!defined('ABSPATH')) exit;
 ?>
@@ -125,6 +128,59 @@ if (!defined('ABSPATH')) exit;
                 );
             ?></p></div>
         <?php endif; ?>
+
+        <h2 id="aspetto"><?php esc_html_e('Aspetto dell\'app', 'db-form-builder'); ?></h2>
+        <?php // phpcs:disable WordPress.Security.NonceVerification.Recommended -- solo messaggio dopo il redirect. ?>
+        <?php if (isset($_GET['dbfb_branding_saved'])): ?>
+            <div class="notice notice-success inline"><p><?php esc_html_e('Aspetto dell\'app salvato. Sui dispositivi dove l\'app è già installata, nome e icona sulla schermata Home si aggiornano entro qualche giorno, oppure reinstallandola.', 'db-form-builder'); ?></p></div>
+        <?php endif; ?>
+        <p><?php esc_html_e('L\'app prende l\'identità del sito: nome, colore e icona compaiono nella barra, nella schermata Home e nel selettore delle app.', 'db-form-builder'); ?></p>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <input type="hidden" name="action" value="dbfb_save_app_branding">
+            <?php wp_nonce_field('dbfb_save_app_branding'); ?>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="dbfb-app-name"><?php esc_html_e('Nome dell\'app', 'db-form-builder'); ?></label></th>
+                    <td>
+                        <input type="text" id="dbfb-app-name" name="app_name" class="regular-text" maxlength="40" value="<?php echo esc_attr($brand['custom_name'] ? $brand['name'] : ''); ?>" placeholder="<?php echo esc_attr(wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES)); ?>" aria-describedby="dbfb-app-name-desc">
+                        <p class="description" id="dbfb-app-name-desc"><?php esc_html_e('Vuoto = nome del sito. Sotto l\'icona della schermata Home ci stanno circa 12 caratteri: per esempio "Leghie" o "Risposte Leghie".', 'db-form-builder'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="dbfb-app-color"><?php esc_html_e('Colore principale', 'db-form-builder'); ?></label></th>
+                    <td>
+                        <input type="color" id="dbfb-app-color" name="app_color" value="<?php echo esc_attr($brand['color']); ?>" aria-describedby="dbfb-app-color-desc" style="width:64px;height:36px;padding:2px">
+                        <p class="description" id="dbfb-app-color-desc"><?php esc_html_e('Barra dell\'app e pulsanti. Se il colore è troppo chiaro o troppo scuro per essere leggibile, l\'app usa automaticamente una sua variante con contrasto adeguato (WCAG AA), in tema chiaro e scuro.', 'db-form-builder'); ?></p>
+                        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:10px" aria-label="<?php esc_attr_e('Anteprima dei colori', 'db-form-builder'); ?>">
+                            <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:6px;background:<?php echo esc_attr($palette['bar']); ?>;color:<?php echo esc_attr($palette['bar_text']); ?>;font-weight:600"><?php echo esc_html($brand['name']); ?></span>
+                            <span style="display:inline-flex;align-items:center;padding:8px 14px;border-radius:6px;background:<?php echo esc_attr($palette['light']['--primary']); ?>;color:<?php echo esc_attr($palette['light']['--on-primary']); ?>;font-weight:600"><?php esc_html_e('Pulsante', 'db-form-builder'); ?></span>
+                            <span style="display:inline-flex;align-items:center;padding:8px 14px;border-radius:6px;background:#1f2328;color:<?php echo esc_attr($palette['dark']['--primary']); ?>;font-weight:600;border-top:3px solid <?php echo esc_attr($palette['bar']); ?>"><?php esc_html_e('Tema scuro', 'db-form-builder'); ?></span>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e('Icona', 'db-form-builder'); ?></th>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <img src="<?php echo esc_url($icons['192']); ?>" alt="" width="48" height="48" style="border-radius:10px;border:1px solid #dcdcde;background:#fff">
+                            <p class="description" style="margin:0">
+                                <?php if ($icons['site']): ?>
+                                    <?php esc_html_e('L\'app usa l\'Icona del sito.', 'db-form-builder'); ?>
+                                <?php else: ?>
+                                    <?php esc_html_e('Il sito non ha un\'Icona del sito: l\'app usa quella del plugin.', 'db-form-builder'); ?>
+                                <?php endif; ?>
+                                <a href="<?php echo esc_url(admin_url('customize.php?autofocus[section]=title_tagline')); ?>"><?php esc_html_e('Cambiala in Personalizza → Identità del sito', 'db-form-builder'); ?></a>
+                                <?php esc_html_e('(immagine quadrata di almeno 512 × 512 pixel).', 'db-form-builder'); ?>
+                            </p>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+            <p class="submit">
+                <?php submit_button(__('Salva l\'aspetto', 'db-form-builder'), 'primary', 'submit', false); ?>
+                <button type="submit" name="reset" value="1" class="button button-link" style="margin-left:12px"><?php esc_html_e('Ripristina nome e colore predefiniti', 'db-form-builder'); ?></button>
+            </p>
+        </form>
 
         <h2 id="notifiche"><?php esc_html_e('Notifiche delle nuove risposte', 'db-form-builder'); ?></h2>
         <p><?php esc_html_e('Il messaggio non contiene mai i dati della risposta: solo "Nuova risposta", il titolo del form (se lo lasci attivo) e il link alla web app.', 'db-form-builder'); ?></p>

@@ -120,6 +120,7 @@ class DB_Form_Builder {
 
         // Web app (PWA) delle risposte (2.21.0).
         DBFB_App::init();
+        DBFB_App_Branding::init();
 
         // Notifiche delle nuove risposte (2.22.0).
         DBFB_Notifications::init();

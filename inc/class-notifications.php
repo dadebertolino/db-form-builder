@@ -28,6 +28,11 @@ class DBFB_Notifications {
     const DISPATCH_HOOK = 'dbfb_notify_dispatch';
     const MAX_DEVICES   = 10;
 
+    // Una sottoscrizione appena creata può risultare per qualche istante
+    // "scaduta" sul push service (404/410) finché non si è propagata: in
+    // questa finestra non la si cancella (2.25.0).
+    const FRESH_GRACE = 600;
+
     public static function init() {
         add_action('dbfb_submission_saved', array(__CLASS__, 'on_submission_saved'), 10, 2);
         add_action(self::DISPATCH_HOOK, array(__CLASS__, 'dispatch'), 10, 2);
@@ -275,7 +280,8 @@ class DBFB_Notifications {
                 continue;
             }
             ++$out['failed'];
-            if (!is_wp_error($code) && in_array($code, array(404, 410), true)) {
+            if (!is_wp_error($code) && in_array($code, array(404, 410), true)
+                && time() - (int) ($sub['created'] ?? 0) > self::FRESH_GRACE) {
                 $expired[] = $key;
             }
             DB_Form_Builder::debug_log('push non inviato (' . (is_wp_error($code) ? $code->get_error_code() : 'HTTP ' . $code) . ')');
@@ -334,6 +340,15 @@ class DBFB_Notifications {
         ));
 
         register_rest_route($ns, '/push/subscription', array(
+            // 2.25.0: il sito conosce ancora questa sottoscrizione? (autoriparazione dell'app)
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => array(__CLASS__, 'rest_subscription_known'),
+                'permission_callback' => array('DBFB_REST', 'permission_check'),
+                'args'                => array(
+                    'endpoint' => array('type' => 'string', 'required' => true),
+                ),
+            ),
             array(
                 'methods'             => WP_REST_Server::CREATABLE,
                 'callback'            => array(__CLASS__, 'rest_subscribe'),
@@ -423,6 +438,15 @@ class DBFB_Notifications {
         }
         self::save_subscriptions($user_id, $subs);
         return rest_ensure_response(array('subscribed' => true));
+    }
+
+    /**
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public static function rest_subscription_known($request) {
+        $subs = self::subscriptions(get_current_user_id());
+        return rest_ensure_response(array('known' => isset($subs[hash('sha256', (string) $request['endpoint'])])));
     }
 
     /**

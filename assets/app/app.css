@@ -146,6 +146,31 @@ a {
     border-bottom: 1px solid var(--border);
 }
 
+/* 2.25.0: logo del sito nella barra (solo in home) */
+.app-bar-logo {
+    width: 28px;
+    height: 28px;
+    margin-left: 8px;
+    border-radius: 6px;
+    object-fit: contain;
+    background: #fff;
+    flex: none;
+}
+
+.app-bar-logo[hidden] {
+    display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .app-bar {
+        box-shadow: inset 0 3px 0 var(--brand, transparent);
+    }
+}
+
+:root[data-theme="dark"] .app-bar {
+    box-shadow: inset 0 3px 0 var(--brand, transparent);
+}
+
 .app-bar-title {
     flex: 1;
     min-width: 0;
@@ -577,6 +602,101 @@ textarea.input {
 .chip.order-refunded {
     color: var(--danger);
     border-color: var(--danger);
+}
+
+/* 2.25.0: invito alle notifiche e Impostazioni */
+.invite {
+    margin-top: 16px;
+    padding: 4px 16px 8px;
+    border-left: 4px solid var(--primary);
+}
+
+.invite[hidden] {
+    display: none;
+}
+
+.invite h2 {
+    margin-top: 12px;
+}
+
+.settings-section {
+    margin: 0 0 16px;
+    padding: 4px 16px 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.settings-section h2 {
+    margin-top: 12px;
+}
+
+.howto {
+    margin: 0 0 12px;
+    padding-left: 22px;
+}
+
+.howto li {
+    margin-bottom: 8px;
+}
+
+.status-on {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.status-on .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--success);
+    flex: none;
+}
+
+.choices {
+    margin: 0 0 8px;
+    padding: 0;
+    border: 0;
+}
+
+.choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+}
+
+.choice input {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    accent-color: var(--primary);
+    flex: none;
+}
+
+.choice label {
+    flex: 1;
+    padding: 10px 0;
+    cursor: pointer;
+}
+
+.about {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 16px;
+    margin: 0 0 12px;
+}
+
+.about dt {
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.about dd {
+    margin: 0;
+    overflow-wrap: anywhere;
 }
 
 .push-card {
