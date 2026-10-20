@@ -8,6 +8,7 @@
  * @var array  $notify          Impostazioni delle notifiche (2.22.0).
  * @var bool   $push_supported  Il server può inviare Web Push (2.22.0).
  * @var array  $health          Esito del controllo delle API (2.24.0).
+ * @var array  $app_pw          Diagnosi delle Application Passwords (2.24.1).
  */
 if (!defined('ABSPATH')) exit;
 ?>
@@ -46,8 +47,42 @@ if (!defined('ABSPATH')) exit;
                 ?>
             </p></div>
         <?php endif; ?>
-        <?php if (!$health['app_passwords']): ?>
-            <div class="notice notice-info inline"><p><?php esc_html_e('Le Application Passwords non sono disponibili (sito senza HTTPS o disattivate da un plugin): la web app funziona lo stesso, ma i client esterni non possono usare le API.', 'db-form-builder'); ?></p></div>
+        <?php // 2.24.1: Application Passwords, con la causa e la correzione. ?>
+        <?php if (!$app_pw['available']): ?>
+            <div class="notice notice-info inline">
+                <p><strong><?php esc_html_e('Application Passwords non disponibili.', 'db-form-builder'); ?></strong>
+                    <?php esc_html_e('La web app funziona lo stesso (usa il login del sito): servono solo a programmi esterni che chiamano le API.', 'db-form-builder'); ?></p>
+                <?php if ($app_pw['reason'] === 'no_ssl'): ?>
+                    <p><?php esc_html_e('Causa: il sito è in HTTPS, ma WordPress non se ne accorge perché la connessione sicura termina su un proxy dell\'hosting e a PHP la richiesta arriva in HTTP. Lo stesso problema può influire anche su altre funzioni di WordPress che controllano l\'HTTPS.', 'db-form-builder'); ?></p>
+                    <?php if ($app_pw['snippet'] !== ''): ?>
+                        <p><?php
+                            printf(
+                                /* translators: %s: nome dell'header HTTP */
+                                esc_html__('Il proxy segnala l\'HTTPS con l\'header %s. Aggiungi queste righe a wp-config.php, sopra "That\'s all, stop editing!":', 'db-form-builder'),
+                                '<code>' . esc_html($app_pw['header']) . '</code>'
+                            );
+                        ?></p>
+                        <pre style="background:#f6f7f7;border:1px solid #dcdcde;padding:10px 12px;overflow-x:auto;user-select:all"><code><?php echo esc_html($app_pw['snippet']); ?></code></pre>
+                        <p><?php esc_html_e('Ricarica poi questa pagina: se la correzione funziona, l\'avviso sparisce e nel profilo utente compare la sezione "Password applicazione".', 'db-form-builder'); ?></p>
+                    <?php else: ?>
+                        <p><?php esc_html_e('Il server non riceve nessuno degli header con cui i proxy segnalano l\'HTTPS (X-Forwarded-Proto, X-Forwarded-Ssl, Front-End-Https, CF-Visitor). Chiedi all\'hosting come rilevare l\'HTTPS in PHP, oppure se può impostare la variabile HTTPS per il sito.', 'db-form-builder'); ?></p>
+                    <?php endif; ?>
+                <?php elseif ($app_pw['reason'] === 'filtered'): ?>
+                    <p><?php
+                        if ($app_pw['plugins']) {
+                            printf(
+                                /* translators: %s: elenco di plugin */
+                                esc_html__('Causa: sono state disattivate da un plugin. Agganciati al filtro che le controlla: %s. Cerca nelle sue impostazioni un\'opzione come "Disattiva Application Passwords".', 'db-form-builder'),
+                                '<strong>' . esc_html(implode(', ', $app_pw['plugins'])) . '</strong>'
+                            );
+                        } else {
+                            esc_html_e('Causa: sono state disattivate da un plugin o da codice personalizzato (filtro wp_is_application_passwords_available). I plugin di sicurezza come Wordfence, Solid Security o All In One WP Security hanno un\'opzione apposita.', 'db-form-builder');
+                        }
+                    ?></p>
+                <?php else: ?>
+                    <p><?php esc_html_e('Causa: il sito non usa HTTPS. Attiva un certificato SSL dall\'hosting e aggiorna gli indirizzi in Impostazioni → Generali: serve anche per installare la web app.', 'db-form-builder'); ?></p>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
         <p><a href="<?php echo esc_url(wp_nonce_url(add_query_arg('dbfb_recheck', '1', admin_url('admin.php?page=dbfb-app')), 'dbfb_recheck')); ?>"><?php esc_html_e('Ripeti il controllo delle API', 'db-form-builder'); ?></a></p>
 
